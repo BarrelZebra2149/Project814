@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/scratch/home/leeunchong/814_solution_gpu_full.py", line 271, in <module>
+    main()
+  File "/scratch/home/leeunchong/814_solution_gpu_full.py", line 194, in main
+    for g in range(1, NGEN + 1):
+UnboundLocalError: local variable 'NGEN' referenced before assignment

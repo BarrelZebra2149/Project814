@@ -1,0 +1,165 @@
+Using PyTorch device: cuda
+GPU: NVIDIA H100 NVL
+CUDA version: 12.8
+Initial Max Score: 3965
+★ NEW RECORD! Gen 56: 3965.0 -> 3976.0
+★ NEW RECORD! Gen 77: 3976.0 -> 3987.0
+Gen   200 | Current Max: 3976 | All-time Max: 3987 | local max Score : 3987
+Gen   400 | Current Max: 3222 | All-time Max: 3987 | local max Score : 3987
+Gen   600 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen   800 | Current Max: 3387 | All-time Max: 3987 | local max Score : 3987
+Gen  1000 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen  1200 | Current Max: 3606 | All-time Max: 3987 | local max Score : 3987
+Gen  1400 | Current Max: 3565 | All-time Max: 3987 | local max Score : 3987
+Gen  1600 | Current Max: 3565 | All-time Max: 3987 | local max Score : 3987
+Gen  1800 | Current Max: 3565 | All-time Max: 3987 | local max Score : 3987
+Gen  2000 | Current Max: 3565 | All-time Max: 3987 | local max Score : 3987
+Gen  2200 | Current Max: 3565 | All-time Max: 3987 | local max Score : 3987
+Gen  2400 | Current Max: 3325 | All-time Max: 3987 | local max Score : 3987
+Gen  2600 | Current Max: 3376 | All-time Max: 3987 | local max Score : 3987
+Gen  2800 | Current Max: 3659 | All-time Max: 3987 | local max Score : 3987
+Gen  3000 | Current Max: 3323 | All-time Max: 3987 | local max Score : 3987
+Gen  3200 | Current Max: 3565 | All-time Max: 3987 | local max Score : 3987
+Gen  3400 | Current Max: 3347 | All-time Max: 3987 | local max Score : 3987
+Gen  3600 | Current Max: 3387 | All-time Max: 3987 | local max Score : 3987
+Gen  3800 | Current Max: 3299 | All-time Max: 3987 | local max Score : 3987
+Gen  4000 | Current Max: 3222 | All-time Max: 3987 | local max Score : 3987
+Gen  4200 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen  4400 | Current Max: 3565 | All-time Max: 3987 | local max Score : 3987
+Gen  4600 | Current Max: 3499 | All-time Max: 3987 | local max Score : 3987
+Gen  4800 | Current Max: 3299 | All-time Max: 3987 | local max Score : 3987
+Gen  5000 | Current Max: 3113 | All-time Max: 3987 | local max Score : 3987
+Gen  5200 | Current Max: 3112 | All-time Max: 3987 | local max Score : 3987
+Gen  5400 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen  5600 | Current Max: 3565 | All-time Max: 3987 | local max Score : 3987
+Gen  5800 | Current Max: 3606 | All-time Max: 3987 | local max Score : 3987
+Gen  6000 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen  6200 | Current Max: 3565 | All-time Max: 3987 | local max Score : 3987
+Gen  6400 | Current Max: 3587 | All-time Max: 3987 | local max Score : 3987
+Gen  6600 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen  6800 | Current Max: 3565 | All-time Max: 3987 | local max Score : 3987
+Gen  7000 | Current Max: 3219 | All-time Max: 3987 | local max Score : 3987
+Gen  7200 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen  7400 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen  7600 | Current Max: 3325 | All-time Max: 3987 | local max Score : 3987
+Gen  7800 | Current Max: 3565 | All-time Max: 3987 | local max Score : 3987
+Gen  8000 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen  8200 | Current Max: 3224 | All-time Max: 3987 | local max Score : 3987
+Gen  8400 | Current Max: 3325 | All-time Max: 3987 | local max Score : 3987
+Gen  8600 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen  8800 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen  9000 | Current Max: 3325 | All-time Max: 3987 | local max Score : 3987
+Gen  9200 | Current Max: 3206 | All-time Max: 3987 | local max Score : 3987
+Gen  9400 | Current Max: 3206 | All-time Max: 3987 | local max Score : 3987
+Gen  9600 | Current Max: 3348 | All-time Max: 3987 | local max Score : 3987
+Gen  9800 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen 10000 | Current Max: 1933 | All-time Max: 3987 | local max Score : 3987
+Gen 10200 | Current Max: 2305 | All-time Max: 3987 | local max Score : 3987
+Gen 10400 | Current Max: 2199 | All-time Max: 3987 | local max Score : 3987
+Gen 10600 | Current Max: 2298 | All-time Max: 3987 | local max Score : 3987
+Gen 10800 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 11000 | Current Max: 2872 | All-time Max: 3987 | local max Score : 3987
+Gen 11200 | Current Max: 2936 | All-time Max: 3987 | local max Score : 3987
+Gen 11400 | Current Max: 3112 | All-time Max: 3987 | local max Score : 3987
+Gen 11600 | Current Max: 3205 | All-time Max: 3987 | local max Score : 3987
+Gen 11800 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 12000 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 12200 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 12400 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 12600 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 12800 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 13000 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 13200 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 13400 | Current Max: 2896 | All-time Max: 3987 | local max Score : 3987
+Gen 13600 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen 13800 | Current Max: 2771 | All-time Max: 3987 | local max Score : 3987
+Gen 14000 | Current Max: 2936 | All-time Max: 3987 | local max Score : 3987
+Gen 14200 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 14400 | Current Max: 2661 | All-time Max: 3987 | local max Score : 3987
+Gen 14600 | Current Max: 2894 | All-time Max: 3987 | local max Score : 3987
+Gen 14800 | Current Max: 2881 | All-time Max: 3987 | local max Score : 3987
+Gen 15000 | Current Max: 2771 | All-time Max: 3987 | local max Score : 3987
+Gen 15200 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 15400 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 15600 | Current Max: 2771 | All-time Max: 3987 | local max Score : 3987
+Gen 15800 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 16000 | Current Max: 2771 | All-time Max: 3987 | local max Score : 3987
+Gen 16200 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 16400 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 16600 | Current Max: 2771 | All-time Max: 3987 | local max Score : 3987
+Gen 16800 | Current Max: 2661 | All-time Max: 3987 | local max Score : 3987
+Gen 17000 | Current Max: 2846 | All-time Max: 3987 | local max Score : 3987
+Gen 17200 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 17400 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 17600 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 17800 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 18000 | Current Max: 2771 | All-time Max: 3987 | local max Score : 3987
+Gen 18200 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 18400 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 18600 | Current Max: 2896 | All-time Max: 3987 | local max Score : 3987
+Gen 18800 | Current Max: 2986 | All-time Max: 3987 | local max Score : 3987
+Gen 19000 | Current Max: 2866 | All-time Max: 3987 | local max Score : 3987
+Gen 19200 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 19400 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 19600 | Current Max: 2836 | All-time Max: 3987 | local max Score : 3987
+Gen 19800 | Current Max: 2933 | All-time Max: 3987 | local max Score : 3987
+Gen 20000 | Current Max: 3398 | All-time Max: 3987 | local max Score : 3987
+Gen 20200 | Current Max: 3365 | All-time Max: 3987 | local max Score : 3987
+Gen 20400 | Current Max: 3319 | All-time Max: 3987 | local max Score : 3987
+Gen 20600 | Current Max: 3398 | All-time Max: 3987 | local max Score : 3987
+Gen 20800 | Current Max: 3398 | All-time Max: 3987 | local max Score : 3987
+Gen 21000 | Current Max: 3398 | All-time Max: 3987 | local max Score : 3987
+Gen 21200 | Current Max: 3398 | All-time Max: 3987 | local max Score : 3987
+Gen 21400 | Current Max: 1806 | All-time Max: 3987 | local max Score : 3987
+Gen 21600 | Current Max: 2661 | All-time Max: 3987 | local max Score : 3987
+Gen 21800 | Current Max: 2888 | All-time Max: 3987 | local max Score : 3987
+Gen 22000 | Current Max: 2962 | All-time Max: 3987 | local max Score : 3987
+Gen 22200 | Current Max: 2715 | All-time Max: 3987 | local max Score : 3987
+Gen 22400 | Current Max: 2816 | All-time Max: 3987 | local max Score : 3987
+Gen 22600 | Current Max: 3278 | All-time Max: 3987 | local max Score : 3987
+Gen 22800 | Current Max: 3398 | All-time Max: 3987 | local max Score : 3987
+Gen 23000 | Current Max: 3376 | All-time Max: 3987 | local max Score : 3987
+Gen 23200 | Current Max: 3398 | All-time Max: 3987 | local max Score : 3987
+Gen 23400 | Current Max: 3398 | All-time Max: 3987 | local max Score : 3987
+Gen 23600 | Current Max: 3662 | All-time Max: 3987 | local max Score : 3987
+★ NEW RECORD! Gen 23671: 3987.0 -> 4129.0
+Gen 23800 | Current Max: 3662 | All-time Max: 4129 | local max Score : 4129
+Gen 24000 | Current Max: 3662 | All-time Max: 4129 | local max Score : 4129
+Gen 24200 | Current Max: 3662 | All-time Max: 4129 | local max Score : 4129
+Gen 24400 | Current Max: 3662 | All-time Max: 4129 | local max Score : 4129
+Gen 24600 | Current Max: 3388 | All-time Max: 4129 | local max Score : 4129
+Gen 24800 | Current Max: 3376 | All-time Max: 4129 | local max Score : 4129
+Gen 25000 | Current Max: 3662 | All-time Max: 4129 | local max Score : 4129
+Gen 25200 | Current Max: 3388 | All-time Max: 4129 | local max Score : 4129
+Gen 25400 | Current Max: 3376 | All-time Max: 4129 | local max Score : 4129
+Gen 25600 | Current Max: 3365 | All-time Max: 4129 | local max Score : 4129
+Gen 25800 | Current Max: 3662 | All-time Max: 4129 | local max Score : 4129
+★ NEW RECORD! Gen 25936: 4129.0 -> 4149.0
+Gen 26000 | Current Max: 3376 | All-time Max: 4149 | local max Score : 4149
+★ NEW RECORD! Gen 26102: 4149.0 -> 4238.0
+Gen 26200 | Current Max: 3662 | All-time Max: 4238 | local max Score : 4238
+Gen 26400 | Current Max: 3662 | All-time Max: 4238 | local max Score : 4238
+Gen 26600 | Current Max: 3388 | All-time Max: 4238 | local max Score : 4238
+Gen 26800 | Current Max: 3376 | All-time Max: 4238 | local max Score : 4238
+Gen 27000 | Current Max: 3348 | All-time Max: 4238 | local max Score : 4238
+Gen 27200 | Current Max: 3662 | All-time Max: 4238 | local max Score : 4238
+Gen 27400 | Current Max: 3772 | All-time Max: 4238 | local max Score : 4238
+Gen 27600 | Current Max: 3389 | All-time Max: 4238 | local max Score : 4238
+Gen 27800 | Current Max: 4119 | All-time Max: 4238 | local max Score : 4238
+★ NEW RECORD! Gen 27804: 4238.0 -> 4249.0
+★ NEW RECORD! Gen 27808: 4249.0 -> 4468.0
+Gen 28000 | Current Max: 3662 | All-time Max: 4468 | local max Score : 4468
+Gen 28200 | Current Max: 3772 | All-time Max: 4468 | local max Score : 4468
+Gen 28400 | Current Max: 3662 | All-time Max: 4468 | local max Score : 4468
+Gen 28600 | Current Max: 3388 | All-time Max: 4468 | local max Score : 4468
+Gen 28800 | Current Max: 3379 | All-time Max: 4468 | local max Score : 4468
+Gen 29000 | Current Max: 3662 | All-time Max: 4468 | local max Score : 4468
+Gen 29200 | Current Max: 3662 | All-time Max: 4468 | local max Score : 4468
+Gen 29400 | Current Max: 3772 | All-time Max: 4468 | local max Score : 4468
+Gen 29600 | Current Max: 3662 | All-time Max: 4468 | local max Score : 4468
+Gen 29800 | Current Max: 3388 | All-time Max: 4468 | local max Score : 4468
+Gen 30000 | Current Max: 3662 | All-time Max: 4468 | local max Score : 4468
+
+============================================================
+Evolution finished after 30000 generations
+Final Saved (Score: 4468, Form: 8963)

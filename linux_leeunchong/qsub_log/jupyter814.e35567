@@ -1,0 +1,59 @@
+[W 2026-02-01 10:36:50.217 ServerApp] ServerApp.password config is deprecated in 2.0. Use PasswordIdentityProvider.hashed_password.
+[I 2026-02-01 10:36:50.500 ServerApp] jupyter_lsp | extension was successfully linked.
+[I 2026-02-01 10:36:50.503 ServerApp] jupyter_server_terminals | extension was successfully linked.
+[I 2026-02-01 10:36:50.506 ServerApp] jupyterlab | extension was successfully linked.
+[I 2026-02-01 10:36:50.509 ServerApp] notebook | extension was successfully linked.
+[I 2026-02-01 10:36:53.014 ServerApp] notebook_shim | extension was successfully linked.
+[I 2026-02-01 10:36:53.108 ServerApp] notebook_shim | extension was successfully loaded.
+[I 2026-02-01 10:36:53.109 ServerApp] jupyter_lsp | extension was successfully loaded.
+[I 2026-02-01 10:36:53.110 ServerApp] jupyter_server_terminals | extension was successfully loaded.
+[I 2026-02-01 10:36:53.124 LabApp] JupyterLab extension loaded from /scratch/home/leeunchong/JupyterLAB/lib/python3.10/site-packages/jupyterlab
+[I 2026-02-01 10:36:53.124 LabApp] JupyterLab application directory is /scratch/home/leeunchong/JupyterLAB/share/jupyter/lab
+[I 2026-02-01 10:36:53.125 LabApp] Extension Manager is 'pypi'.
+[I 2026-02-01 10:36:53.357 ServerApp] jupyterlab | extension was successfully loaded.
+[I 2026-02-01 10:36:53.363 ServerApp] notebook | extension was successfully loaded.
+[I 2026-02-01 10:36:53.363 ServerApp] Serving notebooks from local directory: /scratch/home/leeunchong
+[I 2026-02-01 10:36:53.363 ServerApp] Jupyter Server 2.17.0 is running at:
+[I 2026-02-01 10:36:53.363 ServerApp] http://KITSC016:9703/lab
+[I 2026-02-01 10:36:53.363 ServerApp]     http://127.0.0.1:9703/lab
+[I 2026-02-01 10:36:53.363 ServerApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
+[I 2026-02-01 10:36:53.407 ServerApp] Skipped non-installed server(s): basedpyright, bash-language-server, dockerfile-language-server-nodejs, javascript-typescript-langserver, jedi-language-server, julia-language-server, pyrefly, pyright, python-language-server, python-lsp-server, r-languageserver, sql-language-server, texlab, typescript-language-server, unified-language-server, vscode-css-languageserver-bin, vscode-html-languageserver-bin, vscode-json-languageserver-bin, yaml-language-server
+[I 2026-02-01 10:37:23.344 ServerApp] 302 GET / (@172.23.10.9) 0.27ms
+[I 2026-02-01 10:37:23.449 LabApp] 302 GET /lab? (@172.23.10.9) 0.47ms
+[W 2026-02-01 10:37:28.105 ServerApp] 401 POST /login?next=%2Flab%3F (@172.23.10.9) 159.76ms referer=http://localhost:9703/login?next=%2Flab%3F
+[I 2026-02-01 10:37:32.340 ServerApp] User a254976d41f548d2a353e98f425c11c6 logged in.
+[I 2026-02-01 10:37:32.340 ServerApp] 302 POST /login?next=%2Flab%3F (a254976d41f548d2a353e98f425c11c6@172.23.10.9) 22.15ms
+[W 2026-02-01 10:37:42.759 LabApp] Could not determine jupyterlab build status without nodejs
+[I 2026-02-01 10:37:46.724 ServerApp] Kernel started: 1e36a3df-8563-43b8-8b91-29666e8803ef
+[I 2026-02-01 10:37:46.730 ServerApp] Kernel started: 9bf2164b-24b5-40b3-abd3-fb808a0347f5
+[I 2026-02-01 10:37:46.733 ServerApp] Kernel started: 0c2aa124-de79-4fee-ac44-416a0f3401ec
+[I 2026-02-01 10:37:48.239 ServerApp] Adapting from protocol version 5.3 (kernel 9bf2164b-24b5-40b3-abd3-fb808a0347f5) to 5.4 (client).
+[I 2026-02-01 10:37:48.240 ServerApp] Connecting to kernel 9bf2164b-24b5-40b3-abd3-fb808a0347f5.
+[W 2026-02-01 10:37:48.241 ServerApp] The websocket_ping_timeout (90000) cannot be longer than the websocket_ping_interval (30000).
+    Setting websocket_ping_timeout=30000
+[I 2026-02-01 10:37:48.286 ServerApp] Adapting from protocol version 5.3 (kernel 0c2aa124-de79-4fee-ac44-416a0f3401ec) to 5.4 (client).
+[I 2026-02-01 10:37:48.287 ServerApp] Connecting to kernel 0c2aa124-de79-4fee-ac44-416a0f3401ec.
+[I 2026-02-01 10:37:48.433 ServerApp] Adapting from protocol version 5.3 (kernel 0c2aa124-de79-4fee-ac44-416a0f3401ec) to 5.4 (client).
+[I 2026-02-01 10:37:48.433 ServerApp] Connecting to kernel 0c2aa124-de79-4fee-ac44-416a0f3401ec.
+[I 2026-02-01 10:37:48.495 ServerApp] Adapting from protocol version 5.3 (kernel 1e36a3df-8563-43b8-8b91-29666e8803ef) to 5.4 (client).
+[I 2026-02-01 10:37:48.495 ServerApp] Connecting to kernel 1e36a3df-8563-43b8-8b91-29666e8803ef.
+[I 2026-02-01 10:37:48.563 ServerApp] Adapting from protocol version 5.3 (kernel 0c2aa124-de79-4fee-ac44-416a0f3401ec) to 5.4 (client).
+[I 2026-02-01 10:37:48.564 ServerApp] Connecting to kernel 0c2aa124-de79-4fee-ac44-416a0f3401ec.
+[I 2026-02-01 10:38:18.082 ServerApp] Saving file at /JupyterProj/best_output_double.txt
+[I 2026-02-01 10:39:04.209 ServerApp] Saving file at /JupyterProj/Untitled.ipynb
+[I 2026-02-01 10:39:56.889 ServerApp] Saving file at /JupyterProj/Untitled.ipynb
+[I 2026-02-01 10:41:57.472 ServerApp] Saving file at /JupyterProj/Untitled.ipynb
+[I 2026-02-01 10:43:20.867 ServerApp] Kernel interrupted: 9bf2164b-24b5-40b3-abd3-fb808a0347f5
+[I 2026-02-01 10:43:59.968 ServerApp] Saving file at /JupyterProj/Untitled.ipynb
+[I 2026-02-01 10:46:00.311 ServerApp] Saving file at /JupyterProj/Untitled.ipynb
+[I 2026-02-01 10:48:01.080 ServerApp] Saving file at /JupyterProj/Untitled.ipynb
+[I 2026-02-01 10:50:01.903 ServerApp] Saving file at /JupyterProj/Untitled.ipynb
+[I 2026-02-01 10:52:02.218 ServerApp] Saving file at /JupyterProj/Untitled.ipynb
+[I 2026-02-01 10:54:02.602 ServerApp] Saving file at /JupyterProj/Untitled.ipynb
+[I 2026-02-01 10:56:03.038 ServerApp] Saving file at /JupyterProj/Untitled.ipynb
+[C 2026-02-01 11:03:49.306 ServerApp] received signal 15, stopping
+[I 2026-02-01 11:03:49.307 ServerApp] Shutting down 5 extensions
+[I 2026-02-01 11:03:49.308 ServerApp] Shutting down 3 kernels
+[I 2026-02-01 11:03:49.308 ServerApp] Kernel shutdown: 0c2aa124-de79-4fee-ac44-416a0f3401ec
+[I 2026-02-01 11:03:49.308 ServerApp] Kernel shutdown: 1e36a3df-8563-43b8-8b91-29666e8803ef
+[I 2026-02-01 11:03:49.308 ServerApp] Kernel shutdown: 9bf2164b-24b5-40b3-abd3-fb808a0347f5

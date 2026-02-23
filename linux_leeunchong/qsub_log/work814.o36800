@@ -1,0 +1,23 @@
+Using PyTorch device: cuda
+GPU: NVIDIA H100 NVL
+CUDA version: 12.8
+Initial Max Score: 4468
+Gen   200 | Current Max: 1621 | All-time Max: 4468 | local max Score : -1
+Gen   400 | Current Max: 2243 | All-time Max: 4468 | local max Score : -1
+Gen   600 | Current Max: 2293 | All-time Max: 4468 | local max Score : -1
+Gen   800 | Current Max: 2551 | All-time Max: 4468 | local max Score : -1
+Gen  1000 | Current Max: 2771 | All-time Max: 4468 | local max Score : -1
+Gen  1200 | Current Max: 2718 | All-time Max: 4468 | local max Score : -1
+Gen  1400 | Current Max: 1990 | All-time Max: 4468 | local max Score : -1
+Gen  1600 | Current Max: 2543 | All-time Max: 4468 | local max Score : -1
+Gen  1800 | Current Max: 2599 | All-time Max: 4468 | local max Score : -1
+Gen  2000 | Current Max: 2707 | All-time Max: 4468 | local max Score : -1
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+BOOM wtfffffffff BOOMn
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+============================================================
+Evolution finished after 30000 generations
+
+NO PROGRESS OR NO CANDIDATE TO SAVE!

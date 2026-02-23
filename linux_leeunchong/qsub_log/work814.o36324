@@ -1,0 +1,4 @@
+Using PyTorch device: cuda
+GPU: NVIDIA H100 NVL
+CUDA version: 12.8
+Initial Max Score: 3673

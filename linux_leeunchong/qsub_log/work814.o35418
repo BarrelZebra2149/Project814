@@ -1,0 +1,250 @@
+--Generation 500--
+Current Score (1+)	Max:     232	Avg:    69.2
+Formable (1000-9999)	Max:    7852	Avg:  6643.8
+--Generation 1000--
+Current Score (1+)	Max:     222	Avg:    78.3
+Formable (1000-9999)	Max:    7743	Avg:  6703.3
+--Generation 1500--
+Current Score (1+)	Max:     228	Avg:    77.3
+Formable (1000-9999)	Max:    7735	Avg:  6686.5
+--Generation 2000--
+Current Score (1+)	Max:     228	Avg:    70.9
+Formable (1000-9999)	Max:    7856	Avg:  6645.4
+--Generation 2500--
+Current Score (1+)	Max:     285	Avg:    75.2
+Formable (1000-9999)	Max:    7646	Avg:  6678.9
+--Generation 3000--
+Current Score (1+)	Max:     262	Avg:    73.8
+Formable (1000-9999)	Max:    7771	Avg:  6658.1
+--Generation 3500--
+Current Score (1+)	Max:     262	Avg:    74.3
+Formable (1000-9999)	Max:    7684	Avg:  6674.5
+--Generation 4000--
+Current Score (1+)	Max:     223	Avg:    75.4
+Formable (1000-9999)	Max:    7523	Avg:  6672.6
+--Generation 4500--
+Current Score (1+)	Max:     298	Avg:    71.8
+Formable (1000-9999)	Max:    7740	Avg:  6640.0
+--Generation 5000--
+Current Score (1+)	Max:     216	Avg:    75.2
+Formable (1000-9999)	Max:    7709	Avg:  6662.8
+--Generation 5500--
+Current Score (1+)	Max:     262	Avg:    72.2
+Formable (1000-9999)	Max:    7739	Avg:  6685.6
+--Generation 6000--
+Current Score (1+)	Max:     299	Avg:    73.8
+Formable (1000-9999)	Max:    7894	Avg:  6682.2
+--Generation 6500--
+Current Score (1+)	Max:     286	Avg:    76.4
+Formable (1000-9999)	Max:    7703	Avg:  6697.8
+--Generation 7000--
+Current Score (1+)	Max:     202	Avg:    70.4
+Formable (1000-9999)	Max:    7728	Avg:  6634.5
+--Generation 7500--
+Current Score (1+)	Max:     232	Avg:    77.3
+Formable (1000-9999)	Max:    7681	Avg:  6700.0
+--Generation 8000--
+Current Score (1+)	Max:     224	Avg:    71.5
+Formable (1000-9999)	Max:    7574	Avg:  6651.5
+--Generation 8500--
+Current Score (1+)	Max:     276	Avg:    73.1
+Formable (1000-9999)	Max:    7735	Avg:  6691.9
+--Generation 9000--
+Current Score (1+)	Max:     223	Avg:    73.4
+Formable (1000-9999)	Max:    7730	Avg:  6675.9
+--Generation 9500--
+Current Score (1+)	Max:     274	Avg:    75.4
+Formable (1000-9999)	Max:    7762	Avg:  6662.8
+--Generation 10000--
+Current Score (1+)	Max:     187	Avg:    72.2
+Formable (1000-9999)	Max:    7666	Avg:  6684.6
+
+============================================================
+Evolution finished after 10000 generations
+
+================================================================================
+GRID WITH THE HIGHEST CURRENT SCORE (consecutive from 1)
+================================================================================
+Current Score : 3426
+Formable Count: 8913
+13114529929632
+46948761506451
+64592078134819
+70157209378240
+32043164956124
+69831752305635
+18727815287936
+30594639641707
+
+Digit distribution: 0:9 1:14 2:11 3:12 4:12 5:11 6:12 7:11 8:8 9:12
+Highest current_score grid saved to file.
+
+Top #1 Individual:
+Current consecutive score :     187
+Formable count (1000-9999):    7021
+Grid:
+13996107983931
+62230621126934
+79220551510579
+21457067280113
+78146179097453
+11472368645279
+27384510732697
+88800781226579
+Digit distribution: 0:10 1:16 2:14 3:10 4:7 5:9 6:10 7:15 8:9 9:12
+--------------------------------------------------
+
+Top #2 Individual:
+Current consecutive score :     177
+Formable count (1000-9999):    7261
+Grid:
+12442356986173
+70516827420069
+14503815639716
+79300489459748
+69845490143351
+92706507121203
+62566301518164
+21115112726012
+Digit distribution: 0:12 1:19 2:12 3:9 4:11 5:11 6:13 7:9 8:7 9:9
+--------------------------------------------------
+
+Top #3 Individual:
+Current consecutive score :     176
+Formable count (1000-9999):    7086
+Grid:
+59165716794754
+89975426361252
+28311101642300
+23403014275840
+07169851429913
+03028352585154
+43416726591025
+16159527003577
+Digit distribution: 0:12 1:16 2:13 3:10 4:11 5:16 6:9 7:10 8:6 9:9
+--------------------------------------------------
+--Generation 500--
+Formable (1000-9999)	Max:     279	Avg:  6646.6
+Current Score (1+)	Max:    7692	Avg:    74.3
+--Generation 1000--
+Formable (1000-9999)	Max:     252	Avg:  6630.3
+Current Score (1+)	Max:    7767	Avg:    71.3
+--Generation 1500--
+Formable (1000-9999)	Max:     209	Avg:  6670.6
+Current Score (1+)	Max:    7785	Avg:    73.1
+--Generation 2000--
+Formable (1000-9999)	Max:     224	Avg:  6667.8
+Current Score (1+)	Max:    7931	Avg:    75.6
+--Generation 2500--
+Formable (1000-9999)	Max:     338	Avg:  6682.5
+Current Score (1+)	Max:    7797	Avg:    75.3
+--Generation 3000--
+Formable (1000-9999)	Max:     243	Avg:  6667.4
+Current Score (1+)	Max:    7807	Avg:    75.7
+--Generation 3500--
+Formable (1000-9999)	Max:     335	Avg:  6678.3
+Current Score (1+)	Max:    7609	Avg:    73.6
+--Generation 4000--
+Formable (1000-9999)	Max:     336	Avg:  6680.2
+Current Score (1+)	Max:    7665	Avg:    76.2
+--Generation 4500--
+Formable (1000-9999)	Max:     223	Avg:  6687.2
+Current Score (1+)	Max:    7737	Avg:    75.4
+--Generation 5000--
+Formable (1000-9999)	Max:     219	Avg:  6691.5
+Current Score (1+)	Max:    7925	Avg:    71.3
+--Generation 5500--
+Formable (1000-9999)	Max:     266	Avg:  6653.8
+Current Score (1+)	Max:    7702	Avg:    72.4
+--Generation 6000--
+Formable (1000-9999)	Max:     264	Avg:  6669.3
+Current Score (1+)	Max:    7888	Avg:    74.1
+--Generation 6500--
+Formable (1000-9999)	Max:     326	Avg:  6668.9
+Current Score (1+)	Max:    7826	Avg:    73.0
+--Generation 7000--
+Formable (1000-9999)	Max:     254	Avg:  6657.6
+Current Score (1+)	Max:    7695	Avg:    73.5
+--Generation 7500--
+Formable (1000-9999)	Max:     257	Avg:  6672.0
+Current Score (1+)	Max:    7697	Avg:    74.4
+--Generation 8000--
+Formable (1000-9999)	Max:     233	Avg:  6653.9
+Current Score (1+)	Max:    7673	Avg:    69.4
+--Generation 8500--
+Formable (1000-9999)	Max:     298	Avg:  6664.4
+Current Score (1+)	Max:    7671	Avg:    74.0
+--Generation 9000--
+Formable (1000-9999)	Max:     266	Avg:  6669.4
+Current Score (1+)	Max:    7695	Avg:    72.1
+--Generation 9500--
+Formable (1000-9999)	Max:     298	Avg:  6657.2
+Current Score (1+)	Max:    7744	Avg:    75.8
+--Generation 10000--
+Formable (1000-9999)	Max:     234	Avg:  6691.2
+Current Score (1+)	Max:    7752	Avg:    77.5
+
+============================================================
+Evolution finished after 10000 generations
+
+================================================================================
+GRID WITH THE HIGHEST CURRENT SCORE (consecutive from 1)
+================================================================================
+Current Score : 3426
+Formable Count: 8974
+40994237153258
+62764529812981
+26873154906432
+51985317054320
+04160926728718
+57409583019051
+52835648346305
+36076177968242
+
+Digit distribution: 0:11 1:11 2:13 3:11 4:11 5:13 6:11 7:10 8:11 9:10
+Highest current_score grid saved to file.
+
+Top #1 Individual:
+Current consecutive score :     126
+Formable count (1000-9999):    7752
+Grid:
+29676857689999
+97117583230632
+85551064581426
+12847330734910
+46223558653976
+27905244920907
+73443729811053
+33393669533786
+Digit distribution: 0:8 1:8 2:11 3:17 4:9 5:12 6:12 7:12 8:9 9:14
+--------------------------------------------------
+
+Top #2 Individual:
+Current consecutive score :     132
+Formable count (1000-9999):    7711
+Grid:
+31389001458427
+12581379237172
+58471280575147
+03386398229534
+00695799544210
+66431232650808
+08729627531621
+61796580089966
+Digit distribution: 0:12 1:12 2:13 3:11 4:8 5:11 6:11 7:11 8:12 9:11
+--------------------------------------------------
+
+Top #3 Individual:
+Current consecutive score :      76
+Formable count (1000-9999):    7624
+Grid:
+14351939405782
+71164706988293
+25212465539103
+53240532425457
+42570786019830
+91025190246921
+13874915487519
+14112285656253
+Digit distribution: 0:9 1:16 2:15 3:10 4:12 5:16 6:7 7:8 8:8 9:11
+--------------------------------------------------

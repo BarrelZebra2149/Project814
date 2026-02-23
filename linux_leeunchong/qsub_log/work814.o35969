@@ -1,0 +1,10 @@
+Using PyTorch device: cuda
+GPU: NVIDIA H100 NVL
+CUDA version: 12.8
+Initial Max Score: 3673
+Gen   500 | Current Max: 1550 | All-time Max: 3673
+Gen  1000 | Current Max: 2005 | All-time Max: 3673
+Gen  1500 | Current Max: 2001 | All-time Max: 3673
+Gen  2000 | Current Max: 1747 | All-time Max: 3673
+Gen  2500 | Current Max: 2667 | All-time Max: 3673
+Gen  3000 | Current Max: 2179 | All-time Max: 3673

@@ -1,0 +1,60 @@
+Using PyTorch device: cuda
+GPU: NVIDIA H100 NVL
+CUDA version: 12.8
+Initial Max Score: 3658
+Gen   500 | Current Max: 2065 | All-time Max: 3658
+Gen  1000 | Current Max: 2243 | All-time Max: 3658
+Gen  1500 | Current Max: 2254 | All-time Max: 3658
+Gen  2000 | Current Max: 1669 | All-time Max: 3658
+Gen  2500 | Current Max: 2097 | All-time Max: 3658
+Gen  3000 | Current Max: 2248 | All-time Max: 3658
+Gen  3500 | Current Max: 2287 | All-time Max: 3658
+Gen  4000 | Current Max: 2295 | All-time Max: 3658
+Gen  4500 | Current Max: 2559 | All-time Max: 3658
+Gen  5000 | Current Max: 2814 | All-time Max: 3658
+Gen  5500 | Current Max: 2914 | All-time Max: 3658
+Gen  6000 | Current Max: 2914 | All-time Max: 3658
+Gen  6500 | Current Max: 2917 | All-time Max: 3658
+Gen  7000 | Current Max: 2915 | All-time Max: 3658
+Gen  7500 | Current Max: 2917 | All-time Max: 3658
+Gen  8000 | Current Max: 2917 | All-time Max: 3658
+Gen  8500 | Current Max: 2917 | All-time Max: 3658
+★ NEW RECORD! Gen 8976: 3658.0 -> 3758.0
+Gen  9000 | Current Max: 3424 | All-time Max: 3758
+★ NEW RECORD! Gen 9062: 3758.0 -> 3772.0
+Gen  9500 | Current Max: 2955 | All-time Max: 3772
+Gen 10000 | Current Max: 3053 | All-time Max: 3772
+Gen 10500 | Current Max: 3053 | All-time Max: 3772
+Gen 11000 | Current Max: 3055 | All-time Max: 3772
+Gen 11500 | Current Max: 2953 | All-time Max: 3772
+Gen 12000 | Current Max: 2953 | All-time Max: 3772
+Gen 12500 | Current Max: 2893 | All-time Max: 3772
+Gen 13000 | Current Max: 3058 | All-time Max: 3772
+Gen 13500 | Current Max: 2953 | All-time Max: 3772
+Gen 14000 | Current Max: 2983 | All-time Max: 3772
+Gen 14500 | Current Max: 2593 | All-time Max: 3772
+Gen 15000 | Current Max: 2782 | All-time Max: 3772
+Gen 15500 | Current Max: 2599 | All-time Max: 3772
+Gen 16000 | Current Max: 2596 | All-time Max: 3772
+Gen 16500 | Current Max: 2895 | All-time Max: 3772
+Gen 17000 | Current Max: 2953 | All-time Max: 3772
+Gen 17500 | Current Max: 2738 | All-time Max: 3772
+Gen 18000 | Current Max: 2732 | All-time Max: 3772
+Gen 18500 | Current Max: 2991 | All-time Max: 3772
+★ NEW RECORD! Gen 18981: 3772.0 -> 3794.0
+★ NEW RECORD! Gen 18998: 3794.0 -> 3846.0
+Gen 19000 | Current Max: 3008 | All-time Max: 3846
+Gen 19500 | Current Max: 2765 | All-time Max: 3846
+Gen 20000 | Current Max: 2983 | All-time Max: 3846
+
+============================================================
+Evolution finished after 20000 generations
+86513122211752
+40250673456420
+19786987093405
+57932410218152
+36053139687338
+61826793945640
+57182402451204
+72395182793175
+Final Success: 3846 saved.

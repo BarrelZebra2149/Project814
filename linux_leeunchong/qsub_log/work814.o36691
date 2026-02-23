@@ -1,0 +1,33 @@
+Using PyTorch device: cuda
+GPU: NVIDIA H100 NVL
+CUDA version: 12.8
+Initial Max Score: 4468
+★ NEW RECORD! Gen 56: 4468.0 -> 4495.0
+Gen   200 | Current Max: 4488 | All-time Max: 4495 | local max Score : 4495
+★ NEW RECORD! Gen 215: 4495.0 -> 4496.0
+Gen   400 | Current Max: 4495 | All-time Max: 4496 | local max Score : 4496
+Gen   600 | Current Max: 4495 | All-time Max: 4496 | local max Score : 4496
+★ NEW RECORD! Gen 695: 4496.0 -> 4497.0
+Gen   800 | Current Max: 4495 | All-time Max: 4497 | local max Score : 4497
+Gen  1000 | Current Max: 4495 | All-time Max: 4497 | local max Score : 4497
+Gen  1200 | Current Max: 4495 | All-time Max: 4497 | local max Score : 4497
+Gen  1400 | Current Max: 4495 | All-time Max: 4497 | local max Score : 4497
+Gen  1600 | Current Max: 4495 | All-time Max: 4497 | local max Score : 4497
+Gen  1800 | Current Max: 4488 | All-time Max: 4497 | local max Score : 4497
+Gen  2000 | Current Max: 4495 | All-time Max: 4497 | local max Score : 4497
+Gen  2200 | Current Max: 4495 | All-time Max: 4497 | local max Score : 4497
+Gen  2400 | Current Max: 4468 | All-time Max: 4497 | local max Score : 4497
+Gen  2600 | Current Max: 4495 | All-time Max: 4497 | local max Score : 4497
+Gen  2800 | Current Max: 1795 | All-time Max: 4497 | local max Score : 4497
+Gen  3000 | Current Max: 2991 | All-time Max: 4497 | local max Score : 4497
+Gen  3200 | Current Max: 2991 | All-time Max: 4497 | local max Score : 4497
+Gen  3400 | Current Max: 2991 | All-time Max: 4497 | local max Score : 4497
+Gen  3600 | Current Max: 2991 | All-time Max: 4497 | local max Score : 4497
+Gen  3800 | Current Max: 3298 | All-time Max: 4497 | local max Score : 4497
+Gen  4000 | Current Max: 3386 | All-time Max: 4497 | local max Score : 4497
+Gen  4200 | Current Max: 3385 | All-time Max: 4497 | local max Score : 4497
+Gen  4400 | Current Max: 3298 | All-time Max: 4497 | local max Score : 4497
+Gen  4600 | Current Max: 1705 | All-time Max: 4497 | local max Score : 4497
+Gen  4800 | Current Max: 1852 | All-time Max: 4497 | local max Score : 4497
+Gen  5000 | Current Max: 2249 | All-time Max: 4497 | local max Score : 4497
+Gen  5200 | Current Max: 2613 | All-time Max: 4497 | local max Score : 4497

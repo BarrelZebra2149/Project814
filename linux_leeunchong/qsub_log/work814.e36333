@@ -1,0 +1,4 @@
+  File "/scratch/home/leeunchong/814_solution_gpu_full.py", line 241
+    f"| local max Score : {local_max_score if local_max_score > 0 else "Undefined"}\n")
+                                                                        ^^^^^^^^^
+SyntaxError: f-string: expecting '}'

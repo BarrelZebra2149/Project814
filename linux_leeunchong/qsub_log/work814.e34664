@@ -1,0 +1,1 @@
+SyntaxError: Non-UTF-8 code starting with '\x96' in file /scratch/home/leeunchong/814_solution_double.py on line 191, but no encoding declared; see https://python.org/dev/peps/pep-0263/ for details

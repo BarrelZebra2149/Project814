@@ -1,0 +1,156 @@
+--Generation 500--
+Current Score (1+)	Max:    2876	Avg:  2574.7
+Formable (1000-9999)	Max:    8721	Avg:  8702.5
+--Generation 1000--
+Current Score (1+)	Max:    2876	Avg:  2492.8
+Formable (1000-9999)	Max:    8721	Avg:  8688.9
+--Generation 1500--
+Current Score (1+)	Max:    2876	Avg:  2567.8
+Formable (1000-9999)	Max:    8724	Avg:  8700.5
+--Generation 2000--
+Current Score (1+)	Max:    2876	Avg:  2519.5
+Formable (1000-9999)	Max:    8721	Avg:  8696.9
+--Generation 2500--
+Current Score (1+)	Max:    2876	Avg:  2446.7
+Formable (1000-9999)	Max:    8723	Avg:  8690.7
+--Generation 3000--
+Current Score (1+)	Max:    2876	Avg:  2567.9
+Formable (1000-9999)	Max:    8721	Avg:  8695.6
+--Generation 3500--
+Current Score (1+)	Max:    2876	Avg:  2550.5
+Formable (1000-9999)	Max:    8728	Avg:  8695.6
+--Generation 4000--
+Current Score (1+)	Max:    2876	Avg:  2537.3
+Formable (1000-9999)	Max:    8721	Avg:  8690.5
+--Generation 4500--
+Current Score (1+)	Max:    2876	Avg:  2593.2
+Formable (1000-9999)	Max:    8721	Avg:  8702.1
+--Generation 5000--
+Current Score (1+)	Max:    2876	Avg:  2568.4
+Formable (1000-9999)	Max:    8721	Avg:  8699.5
+
+============================================================
+Evolution finished after 5000 generations
+
+Top #1 Individual:
+ Current consecutive score :    2876
+ Formable count (1000-9999):    8721
+ Grid:
+ 24312902275690
+ 60751853680287
+ 15679471307132
+ 18394625841694
+ 98720152386250
+ 97123410010915
+ 52695647984291
+ 86488273342337
+ Digit distribution: 0:10 1:13 2:15 3:11 4:10 5:10 6:10 7:11 8:11 9:11
+--------------------------------------------------
+
+Top #2 Individual:
+ Current consecutive score :    2876
+ Formable count (1000-9999):    8721
+ Grid:
+ 24312902275690
+ 60751853680287
+ 15679471307132
+ 18394625841694
+ 98720152386250
+ 97123410010915
+ 52695647984291
+ 86488273342337
+ Digit distribution: 0:10 1:13 2:15 3:11 4:10 5:10 6:10 7:11 8:11 9:11
+--------------------------------------------------
+
+Top #3 Individual:
+ Current consecutive score :    2876
+ Formable count (1000-9999):    8721
+ Grid:
+ 24312902275690
+ 60751853680287
+ 15679471307132
+ 18394625841694
+ 98720152386250
+ 97123410010915
+ 52695647984291
+ 86488273342337
+ Digit distribution: 0:10 1:13 2:15 3:11 4:10 5:10 6:10 7:11 8:11 9:11
+--------------------------------------------------
+--Generation 500--
+Formable (1000-9999)	Max:    1877	Avg:  1548.5
+Current Score (1+)	Max:    2876	Avg:  2483.9
+--Generation 1000--
+Formable (1000-9999)	Max:    1877	Avg:  1615.2
+Current Score (1+)	Max:    2876	Avg:  2571.3
+--Generation 1500--
+Formable (1000-9999)	Max:    1877	Avg:  1547.0
+Current Score (1+)	Max:    2876	Avg:  2485.9
+--Generation 2000--
+Formable (1000-9999)	Max:    1877	Avg:  1568.9
+Current Score (1+)	Max:    2876	Avg:  2510.4
+--Generation 2500--
+Formable (1000-9999)	Max:    1877	Avg:  1504.2
+Current Score (1+)	Max:    2876	Avg:  2428.0
+--Generation 3000--
+Formable (1000-9999)	Max:    1882	Avg:  1458.1
+Current Score (1+)	Max:    2881	Avg:  2396.2
+--Generation 3500--
+Formable (1000-9999)	Max:    1988	Avg:  1661.2
+Current Score (1+)	Max:    2987	Avg:  2603.6
+--Generation 4000--
+Formable (1000-9999)	Max:    1988	Avg:  1586.2
+Current Score (1+)	Max:    2987	Avg:  2530.0
+--Generation 4500--
+Formable (1000-9999)	Max:    1988	Avg:  1539.4
+Current Score (1+)	Max:    2987	Avg:  2454.0
+--Generation 5000--
+Formable (1000-9999)	Max:    1988	Avg:  1683.9
+Current Score (1+)	Max:    2987	Avg:  2625.3
+
+============================================================
+Evolution finished after 5000 generations
+
+Top #1 Individual:
+ Formable count (1000-9999):    1988
+ Current consecutive score :    2987
+ Grid:
+ 23412982275698
+ 68751054608207
+ 15679371487142
+ 10493625031693
+ 90728152406258
+ 97214318818915
+ 52695637903291
+ 06300274402447
+ Digit distribution: 0:12 1:13 2:15 3:9 4:11 5:10 6:10 7:11 8:10 9:11
+--------------------------------------------------
+
+Top #2 Individual:
+ Formable count (1000-9999):    1988
+ Current consecutive score :    2987
+ Grid:
+ 23712982245698
+ 68451057608204
+ 15649341784172
+ 10793625031693
+ 90428152706258
+ 94217318818915
+ 52695634903291
+ 06300247702774
+ Digit distribution: 0:12 1:13 2:15 3:9 4:11 5:10 6:10 7:11 8:10 9:11
+--------------------------------------------------
+
+Top #3 Individual:
+ Formable count (1000-9999):    1988
+ Current consecutive score :    2987
+ Grid:
+ 23712982246598
+ 58461067508204
+ 16549341784172
+ 10793526031593
+ 90428162705268
+ 94217318818916
+ 62596534903291
+ 05300247702774
+ Digit distribution: 0:12 1:13 2:15 3:9 4:11 5:10 6:10 7:11 8:10 9:11
+--------------------------------------------------

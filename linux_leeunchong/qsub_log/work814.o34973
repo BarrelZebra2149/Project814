@@ -1,0 +1,78 @@
+--Generation 500--
+Current Score (1+)	Max:    2876	Avg:  2532.4
+Formable (1000-9999)	Max:    8721	Avg:  8698.7
+--Generation 1000--
+Current Score (1+)	Max:    2876	Avg:  2608.7
+Formable (1000-9999)	Max:    8721	Avg:  8702.8
+--Generation 1500--
+Current Score (1+)	Max:    2876	Avg:  2461.1
+Formable (1000-9999)	Max:    8737	Avg:  8692.2
+--Generation 2000--
+Current Score (1+)	Max:    2876	Avg:  2322.7
+Formable (1000-9999)	Max:    8721	Avg:  8682.8
+--Generation 2500--
+Current Score (1+)	Max:    2876	Avg:  2574.0
+Formable (1000-9999)	Max:    8721	Avg:  8694.0
+--Generation 3000--
+Current Score (1+)	Max:    2876	Avg:  2552.7
+Formable (1000-9999)	Max:    8739	Avg:  8712.2
+--Generation 3500--
+Current Score (1+)	Max:    2876	Avg:  2515.2
+Formable (1000-9999)	Max:    8739	Avg:  8707.4
+--Generation 4000--
+Current Score (1+)	Max:    2876	Avg:  2577.1
+Formable (1000-9999)	Max:    8742	Avg:  8722.9
+--Generation 4500--
+Current Score (1+)	Max:    2876	Avg:  2526.0
+Formable (1000-9999)	Max:    8739	Avg:  8710.7
+--Generation 5000--
+Current Score (1+)	Max:    2876	Avg:  2576.4
+Formable (1000-9999)	Max:    8739	Avg:  8719.9
+
+============================================================
+Evolution finished after 5000 generations
+
+Top #1 Individual:
+ Current consecutive score :    2876
+ Formable count (1000-9999):    8739
+ Grid:
+ 24312602275690
+ 90751853680287
+ 15679471307132
+ 18394625841694
+ 98720152386250
+ 97123410010915
+ 52695647984291
+ 86488273352337
+ Digit distribution: 0:10 1:13 2:15 3:11 4:9 5:11 6:10 7:11 8:11 9:11
+--------------------------------------------------
+
+Top #2 Individual:
+ Current consecutive score :    2876
+ Formable count (1000-9999):    8739
+ Grid:
+ 24312602275690
+ 90751853680287
+ 15679471307132
+ 18394625841694
+ 98720152386250
+ 97123410010915
+ 52695647984291
+ 86488273352337
+ Digit distribution: 0:10 1:13 2:15 3:11 4:9 5:11 6:10 7:11 8:11 9:11
+--------------------------------------------------
+
+Top #3 Individual:
+ Current consecutive score :    2876
+ Formable count (1000-9999):    8739
+ Grid:
+ 24312602275690
+ 90751853680287
+ 15679471307132
+ 18394625841694
+ 98720152386250
+ 97123410010915
+ 52695647984291
+ 86488273352337
+ Digit distribution: 0:10 1:13 2:15 3:11 4:9 5:11 6:10 7:11 8:11 9:11
+--------------------------------------------------

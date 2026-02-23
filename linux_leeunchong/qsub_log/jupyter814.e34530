@@ -1,0 +1,272 @@
+[W 2026-01-24 15:21:28.637 ServerApp] ServerApp.password config is deprecated in 2.0. Use PasswordIdentityProvider.hashed_password.
+[I 2026-01-24 15:21:28.686 ServerApp] jupyter_lsp | extension was successfully linked.
+[I 2026-01-24 15:21:28.689 ServerApp] jupyter_server_terminals | extension was successfully linked.
+[I 2026-01-24 15:21:28.692 ServerApp] jupyterlab | extension was successfully linked.
+[I 2026-01-24 15:21:28.695 ServerApp] notebook | extension was successfully linked.
+[I 2026-01-24 15:21:28.877 ServerApp] notebook_shim | extension was successfully linked.
+[I 2026-01-24 15:21:28.898 ServerApp] notebook_shim | extension was successfully loaded.
+[I 2026-01-24 15:21:28.900 ServerApp] jupyter_lsp | extension was successfully loaded.
+[I 2026-01-24 15:21:28.901 ServerApp] jupyter_server_terminals | extension was successfully loaded.
+[I 2026-01-24 15:21:28.902 LabApp] JupyterLab extension loaded from /scratch/home/leeunchong/JupyterLAB/lib/python3.10/site-packages/jupyterlab
+[I 2026-01-24 15:21:28.902 LabApp] JupyterLab application directory is /scratch/home/leeunchong/JupyterLAB/share/jupyter/lab
+[I 2026-01-24 15:21:28.903 LabApp] Extension Manager is 'pypi'.
+[I 2026-01-24 15:21:28.944 ServerApp] jupyterlab | extension was successfully loaded.
+[I 2026-01-24 15:21:28.946 ServerApp] notebook | extension was successfully loaded.
+[I 2026-01-24 15:21:28.947 ServerApp] Serving notebooks from local directory: /scratch/home/leeunchong
+[I 2026-01-24 15:21:28.947 ServerApp] Jupyter Server 2.17.0 is running at:
+[I 2026-01-24 15:21:28.947 ServerApp] http://KITSG001:8224/lab
+[I 2026-01-24 15:21:28.947 ServerApp]     http://127.0.0.1:8224/lab
+[I 2026-01-24 15:21:28.947 ServerApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
+[I 2026-01-24 15:21:28.967 ServerApp] Skipped non-installed server(s): basedpyright, bash-language-server, dockerfile-language-server-nodejs, javascript-typescript-langserver, jedi-language-server, julia-language-server, pyrefly, pyright, python-language-server, python-lsp-server, r-languageserver, sql-language-server, texlab, typescript-language-server, unified-language-server, vscode-css-languageserver-bin, vscode-html-languageserver-bin, vscode-json-languageserver-bin, yaml-language-server
+[I 2026-01-24 15:23:01.156 ServerApp] 302 GET / (@172.23.10.9) 0.37ms
+[I 2026-01-24 15:23:01.284 LabApp] 302 GET /lab? (@172.23.10.9) 0.57ms
+[I 2026-01-24 15:23:04.798 ServerApp] User 922b4438136d403baf8c082bc2833904 logged in.
+[I 2026-01-24 15:23:04.799 ServerApp] 302 POST /login?next=%2Flab%3F (922b4438136d403baf8c082bc2833904@172.23.10.9) 31.93ms
+[W 2026-01-24 15:23:09.069 LabApp] Could not determine jupyterlab build status without nodejs
+[W 2026-01-24 15:23:09.551 ServerApp] 404 GET /api/contents/JupyterProj/Untitled1.ipynb?content=0&hash=0&1769235789149 (922b4438136d403baf8c082bc2833904@172.23.10.9) 2.05ms referer=http://localhost:8224/lab?
+[W 2026-01-24 15:23:09.551 ServerApp] 404 GET /api/contents/JupyterProj/Untitled1.ipynb?content=0&hash=0&1769235789149 (172.23.10.9): No such file or directory: JupyterProj/Untitled1.ipynb
+[W 2026-01-24 15:23:09.696 ServerApp] 404 GET /api/contents/JupyterProj/814_Proj/output.txt?content=0&hash=0&1769235789150 (922b4438136d403baf8c082bc2833904@172.23.10.9) 1.12ms referer=http://localhost:8224/lab?
+[W 2026-01-24 15:23:09.696 ServerApp] 404 GET /api/contents/JupyterProj/814_Proj/output.txt?content=0&hash=0&1769235789150 (172.23.10.9): No such file or directory: JupyterProj/814_Proj/output.txt
+[W 2026-01-24 15:23:09.723 ServerApp] 404 GET /api/contents/JupyterProj/814_Proj/untitled.txt?content=0&hash=0&1769235789150 (922b4438136d403baf8c082bc2833904@172.23.10.9) 2.56ms referer=http://localhost:8224/lab?
+[W 2026-01-24 15:23:09.723 ServerApp] 404 GET /api/contents/JupyterProj/814_Proj/untitled.txt?content=0&hash=0&1769235789150 (172.23.10.9): No such file or directory: JupyterProj/814_Proj/untitled.txt
+[I 2026-01-24 15:23:09.937 ServerApp] New terminal with automatic name: 2
+[W 2026-01-24 15:23:10.734 ServerApp] The websocket_ping_timeout (90000) cannot be longer than the websocket_ping_interval (30000).
+    Setting websocket_ping_timeout=30000
+[I 2026-01-24 15:23:11.854 ServerApp] Kernel started: c0bf24e5-dad6-48ba-8bf3-31a977a4a35a
+[I 2026-01-24 15:23:11.896 ServerApp] Kernel started: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 15:23:12.242 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 15:23:12.242 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 15:23:12.578 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 15:23:12.579 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 15:23:12.582 ServerApp] Adapting from protocol version 5.3 (kernel c0bf24e5-dad6-48ba-8bf3-31a977a4a35a) to 5.4 (client).
+[I 2026-01-24 15:23:12.582 ServerApp] Connecting to kernel c0bf24e5-dad6-48ba-8bf3-31a977a4a35a.
+[I 2026-01-24 15:23:12.749 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 15:23:12.749 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 15:27:12.131 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 15:28:50.170 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 15:28:50.204 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 15:28:50.328 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 15:28:50.329 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 15:28:50.329 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 15:29:12.427 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 15:33:02.705 ServerApp] Saving file at /JupyterProj/814_Proj/best_output.txt
+[I 2026-01-24 15:33:04.227 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 15:33:07.347 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 15:33:07.372 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 15:33:07.510 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 15:33:07.511 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 15:33:07.511 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 15:35:05.056 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 17:29:13.194 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 17:33:18.297 ServerApp] Saving file at /JupyterProj/814_Proj/best_output.txt
+[I 2026-01-24 17:35:58.982 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 17:35:59.003 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 17:35:59.136 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 17:35:59.136 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 17:35:59.136 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[W 2026-01-24 17:36:03.646 ServerApp] Nudge: attempt 10 on kernel de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 17:37:15.148 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 17:39:01.082 ServerApp] Starting buffering for c0bf24e5-dad6-48ba-8bf3-31a977a4a35a:e3a581b1-9581-45ab-8ff7-f9998ca5e753
+[I 2026-01-24 17:56:29.090 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 17:58:13.137 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 18:00:15.547 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 18:00:15.574 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 18:00:15.718 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 18:00:15.719 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 18:00:15.719 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 18:00:31.670 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 18:02:12.695 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 18:02:33.145 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 18:03:17.723 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 18:03:21.490 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 18:03:21.516 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 18:03:21.651 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 18:03:21.652 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 18:03:21.652 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 18:05:18.273 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 18:09:23.938 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 18:11:19.645 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 18:13:39.228 ServerApp] Saving file at /JupyterProj/814_Proj/best_output.txt
+[I 2026-01-24 18:13:48.828 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 18:13:48.858 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 18:13:49.007 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 18:13:49.007 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 18:13:49.007 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 18:15:19.874 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 18:44:53.464 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 18:46:04.231 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:00:10.208 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:02:10.385 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:03:15.554 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:03:15.577 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:03:15.671 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 19:03:15.671 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 19:03:15.671 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:03:25.778 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:03:59.959 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:03:59.979 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:04:00.037 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 19:04:00.037 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 19:04:00.037 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:04:10.671 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:05:36.722 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:05:36.743 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:05:36.881 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 19:05:36.882 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 19:05:36.882 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:06:11.001 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:16:12.297 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:20:54.063 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:20:54.089 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:20:54.230 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 19:20:54.230 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 19:20:54.230 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:21:12.716 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:21:37.187 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:21:40.829 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:21:45.568 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:21:45.591 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:21:45.737 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 19:21:45.738 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 19:21:45.738 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:22:42.601 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:32:42.954 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:34:29.539 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:34:29.560 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:34:29.704 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 19:34:29.705 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 19:34:29.705 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:34:43.274 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:35:32.397 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:35:32.420 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:35:32.560 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 19:35:32.561 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 19:35:32.561 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:36:37.873 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:45:39.177 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:46:38.274 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:48:01.314 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:48:01.339 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:48:01.482 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 19:48:01.482 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 19:48:01.482 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:48:03.486 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:48:28.053 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:48:28.076 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:48:28.206 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 19:48:28.207 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 19:48:28.207 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:48:38.686 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:52:00.899 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:52:38.968 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 19:53:04.808 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 19:53:04.831 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:53:04.977 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 19:53:04.978 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 19:53:04.978 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 19:54:39.291 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 20:01:44.048 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 20:02:35.342 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 20:02:35.362 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 20:02:35.499 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 20:02:35.499 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 20:02:35.499 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 20:02:39.632 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 20:02:39.672 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 20:03:42.014 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 20:04:10.332 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 20:04:10.370 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 20:04:10.501 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 20:04:10.502 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 20:04:10.502 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 20:04:14.657 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 20:04:37.416 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 20:32:39.306 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 20:34:39.871 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 20:36:19.728 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 20:36:47.402 ServerApp] Saving file at /JupyterProj/814_Proj/best_output.txt
+[I 2026-01-24 20:36:57.889 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 20:36:57.913 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 20:36:58.050 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 20:36:58.050 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 20:36:58.050 ServerApp] Restoring connection for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 20:37:48.829 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 20:54:00.301 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[W 2026-01-24 21:44:01.681 LabApp] Could not determine jupyterlab build status without nodejs
+[I 2026-01-24 21:44:01.889 ServerApp] Adapting from protocol version 5.3 (kernel c0bf24e5-dad6-48ba-8bf3-31a977a4a35a) to 5.4 (client).
+[I 2026-01-24 21:44:01.889 ServerApp] Connecting to kernel c0bf24e5-dad6-48ba-8bf3-31a977a4a35a.
+[I 2026-01-24 21:44:02.153 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:44:02.153 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:44:02.154 ServerApp] Discarding 112 buffered messages for de97021b-ef15-4c49-bf6e-730f2d548d7c:bac50c1b-ea24-4c94-8b3e-566abb5fd09f
+[I 2026-01-24 21:44:02.272 ServerApp] Starting buffering for c0bf24e5-dad6-48ba-8bf3-31a977a4a35a:741443ae-22ab-473b-b7a6-de304cf7c4cb
+[I 2026-01-24 21:44:04.098 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:44:04.099 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:45:16.173 ServerApp] Starting buffering for de97021b-ef15-4c49-bf6e-730f2d548d7c:dfef8ec8-02cb-4622-a478-47c80214a9fe
+[W 2026-01-24 21:45:17.415 LabApp] Could not determine jupyterlab build status without nodejs
+[I 2026-01-24 21:45:17.652 ServerApp] Adapting from protocol version 5.3 (kernel c0bf24e5-dad6-48ba-8bf3-31a977a4a35a) to 5.4 (client).
+[I 2026-01-24 21:45:17.652 ServerApp] Connecting to kernel c0bf24e5-dad6-48ba-8bf3-31a977a4a35a.
+[I 2026-01-24 21:45:17.811 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:45:17.811 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:45:17.834 ServerApp] Starting buffering for c0bf24e5-dad6-48ba-8bf3-31a977a4a35a:e96d2d65-fdbf-49fc-8749-8f1287a6100b
+[I 2026-01-24 21:45:19.409 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:45:19.410 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:46:19.333 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:46:19.333 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:46:42.923 ServerApp] Kernel shutdown: c0bf24e5-dad6-48ba-8bf3-31a977a4a35a
+[I 2026-01-24 21:46:53.592 JupyterNotebookApp] 302 GET /tree/JupyterProj/814_Proj/814_solution_asfile.ipynb (922b4438136d403baf8c082bc2833904@172.23.10.9) 1.21ms
+[I 2026-01-24 21:47:00.608 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:47:00.609 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:47:01.401 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:47:01.402 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:50:19.436 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 21:50:29.759 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:50:29.760 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:50:36.311 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:50:36.312 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:50:56.433 ServerApp] Kernel interrupted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 21:51:03.452 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:51:03.452 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:52:20.433 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 21:53:37.219 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 21:53:43.612 ServerApp] Kernel restarted: de97021b-ef15-4c49-bf6e-730f2d548d7c
+[I 2026-01-24 21:53:43.791 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:53:43.792 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:54:11.597 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[W 2026-01-24 21:54:37.100 LabApp] Could not determine jupyterlab build status without nodejs
+[I 2026-01-24 21:54:37.195 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:54:37.196 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:54:39.415 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:54:39.415 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:55:29.524 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:55:29.525 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:55:30.415 ServerApp] Adapting from protocol version 5.3 (kernel de97021b-ef15-4c49-bf6e-730f2d548d7c) to 5.4 (client).
+[I 2026-01-24 21:55:30.415 ServerApp] Connecting to kernel de97021b-ef15-4c49-bf6e-730f2d548d7c.
+[I 2026-01-24 21:58:01.314 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution_asfile.ipynb
+[I 2026-01-24 21:58:39.428 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution.py
+[I 2026-01-24 22:00:39.459 ServerApp] Saving file at /JupyterProj/814_Proj/814_work.sh
+[I 2026-01-24 22:00:40.070 ServerApp] Saving file at /JupyterProj/814_Proj/814_solution.py
+[I 2026-01-24 22:00:42.710 ServerApp] Saving file at /JupyterProj/814_Proj/814_work.sh
+[I 2026-01-24 22:03:06.717 ServerApp] Copying 'JupyterProj/814_Proj/814_solution.py' to '/JupyterProj'
+[I 2026-01-24 22:03:06.750 ServerApp] Copying 'JupyterProj/814_Proj/814_work.sh' to '/JupyterProj'
+[I 2026-01-24 22:03:43.469 ServerApp] Copying 'JupyterProj/814_solution.py' to ''
+[I 2026-01-24 22:03:43.577 ServerApp] Copying 'JupyterProj/814_work.sh' to ''
+[W 2026-01-24 22:04:42.541 ServerApp] delete /jupyter814.e34529
+[W 2026-01-24 22:04:42.634 ServerApp] delete /jupyter814.e34579
+[W 2026-01-24 22:04:42.777 ServerApp] delete /jupyter814.o34529
+[W 2026-01-24 22:04:42.848 ServerApp] delete /jupyter814.o34579
+[W 2026-01-24 22:04:42.855 ServerApp] delete /jupyterTEST.e34522
+[W 2026-01-24 22:04:42.862 ServerApp] delete /jupyterTEST.o34522
+[W 2026-01-24 22:10:12.602 ServerApp] delete /output.txt
+[I 2026-01-24 22:10:31.539 ServerApp] Creating new file in 
+[I 2026-01-24 22:10:56.781 ServerApp] Saving file at /helloworld.py
+[I 2026-01-24 22:13:46.412 ServerApp] Saving file at /814_solution.py
+[I 2026-01-24 22:13:51.714 ServerApp] Saving file at /814_solution.py
+[I 2026-01-24 22:14:31.982 ServerApp] Saving file at /JupyterProj/814_solution.py
+[I 2026-01-24 22:18:08.143 ServerApp] Saving file at /JupyterProj/814_solution.py
+[I 2026-01-24 22:18:20.116 ServerApp] Saving file at /JupyterProj/814_solution.py
+[I 2026-01-24 22:19:16.492 ServerApp] Saving file at /814_solution.py
+[I 2026-01-24 22:19:22.953 ServerApp] Saving file at /814_solution.py
+[C 2026-01-24 22:20:43.540 ServerApp] received signal 15, stopping
+[I 2026-01-24 22:20:43.543 ServerApp] Shutting down 5 extensions
+[I 2026-01-24 22:20:43.543 ServerApp] Shutting down 1 kernel
+[I 2026-01-24 22:20:43.544 ServerApp] Kernel shutdown: de97021b-ef15-4c49-bf6e-730f2d548d7c

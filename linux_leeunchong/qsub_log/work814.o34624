@@ -1,0 +1,43 @@
+-- Generation 10 --
+ Max Score: 1143.0000
+ Avg Score: 182.5733
+-- Generation 20 --
+ Max Score: 1176.0000
+ Avg Score: 354.7100
+-- Generation 30 --
+ Max Score: 1181.0000
+ Avg Score: 530.8700
+-- Generation 40 --
+ Max Score: 1181.0000
+ Avg Score: 385.3667
+-- Generation 50 --
+ Max Score: 1181.0000
+ Avg Score: 411.1400
+-- Generation 60 --
+ Max Score: 1181.0000
+ Avg Score: 483.3367
+-- Generation 70 --
+ Max Score: 1298.0000
+ Avg Score: 508.8100
+-- Generation 80 --
+ Max Score: 1298.0000
+ Avg Score: 601.3000
+-- Generation 90 --
+ Max Score: 1298.0000
+ Avg Score: 554.2300
+-- Generation 100 --
+ Max Score: 1299.0000
+ Avg Score: 577.0100
+
+Best individual Score: 1299.0000
+77251005593552
+54095437958421
+91469358780608
+03873167572835
+64021967001122
+46917251925546
+34184323449603
+60058112376975
+
+Digit Counts:
+0: 12 1: 12 2: 11 3: 11 4: 11 5: 16 6: 10 7: 11 8: 8 9: 10 

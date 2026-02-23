@@ -1,0 +1,51 @@
+Using PyTorch device: cuda
+GPU: NVIDIA H100 NVL
+CUDA version: 12.8
+Initial Max Score: 3658
+Gen   500 | Current Max: 2598 | All-time Max: 3658
+Gen  1000 | Current Max: 2661 | All-time Max: 3658
+Gen  1500 | Current Max: 2698 | All-time Max: 3658
+Gen  2000 | Current Max: 2698 | All-time Max: 3658
+Gen  2500 | Current Max: 2771 | All-time Max: 3658
+Gen  3000 | Current Max: 2787 | All-time Max: 3658
+Gen  3500 | Current Max: 2787 | All-time Max: 3658
+Gen  4000 | Current Max: 2771 | All-time Max: 3658
+Gen  4500 | Current Max: 2787 | All-time Max: 3658
+Gen  5000 | Current Max: 2787 | All-time Max: 3658
+Gen  5500 | Current Max: 2787 | All-time Max: 3658
+Gen  6000 | Current Max: 2809 | All-time Max: 3658
+Gen  6500 | Current Max: 2787 | All-time Max: 3658
+Gen  7000 | Current Max: 2787 | All-time Max: 3658
+Gen  7500 | Current Max: 2787 | All-time Max: 3658
+Gen  8000 | Current Max: 2771 | All-time Max: 3658
+Gen  8500 | Current Max: 2787 | All-time Max: 3658
+Gen  9000 | Current Max: 2787 | All-time Max: 3658
+Gen  9500 | Current Max: 2787 | All-time Max: 3658
+Gen 10000 | Current Max: 2803 | All-time Max: 3658
+Gen 10500 | Current Max: 2803 | All-time Max: 3658
+Gen 11000 | Current Max: 2835 | All-time Max: 3658
+Gen 11500 | Current Max: 2787 | All-time Max: 3658
+Gen 12000 | Current Max: 2787 | All-time Max: 3658
+Gen 12500 | Current Max: 2809 | All-time Max: 3658
+Gen 13000 | Current Max: 2835 | All-time Max: 3658
+Gen 13500 | Current Max: 2835 | All-time Max: 3658
+Gen 14000 | Current Max: 2881 | All-time Max: 3658
+Gen 14500 | Current Max: 2787 | All-time Max: 3658
+Gen 15000 | Current Max: 2787 | All-time Max: 3658
+Gen 15500 | Current Max: 2787 | All-time Max: 3658
+Gen 16000 | Current Max: 2876 | All-time Max: 3658
+Gen 16500 | Current Max: 2787 | All-time Max: 3658
+Gen 17000 | Current Max: 2787 | All-time Max: 3658
+Gen 17500 | Current Max: 2787 | All-time Max: 3658
+Gen 18000 | Current Max: 2787 | All-time Max: 3658
+Gen 18500 | Current Max: 2798 | All-time Max: 3658
+Gen 19000 | Current Max: 2787 | All-time Max: 3658
+Gen 19500 | Current Max: 2798 | All-time Max: 3658
+Gen 20000 | Current Max: 2787 | All-time Max: 3658
+
+============================================================
+Evolution finished after 20000 generations
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+NO PROGRESS IN THIS RUN!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

@@ -1,0 +1,4 @@
+  File "/scratch/home/leeunchong/814_solution.py", line 151
+     
+    ^
+SyntaxError: invalid non-printable character U+00A0

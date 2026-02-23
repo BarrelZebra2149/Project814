@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/scratch/home/leeunchong/814_solution_double.py", line 207, in <module>
+    main()
+  File "/scratch/home/leeunchong/814_solution_double.py", line 174, in main
+    toolbox.mutate(mutant)
+  File "/scratch/home/leeunchong/814_solution_double.py", line 84, in custom_mutate
+    indpb_swp = 1 - indpb_swp
+UnboundLocalError: local variable 'indpb_swp' referenced before assignment
