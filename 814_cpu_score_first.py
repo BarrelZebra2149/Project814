@@ -18,21 +18,21 @@ FILENAME = 'final_gen_sep1.txt'
 
 TARGET_POP = 100
 NGEN = 500000
-G_PRINT_GROUP = 1000
+G_PRINT_GROUP = 10
 G_STAG_GROUP = 200
-STAGNATION_LIMIT = 25000
+STAGNATION_LIMIT = 100
 
 ELITE_SIZE = 5
 ELITE_BEST_SIZE = 10
 
 CURRENT_CXPB = 0.3
-CURRENT_MUTPB = 0.8
+CURRENT_MUTPB = 0.9
 
 GLOBAL_MAX_SCORE = 0.0
 STAGNATION_MODE = False
 
 # =============================================================================
-# 2. DEAP Setup
+# 2. DEAP Framework Setup
 # =============================================================================
 creator.create("FitnessMax", base.Fitness, weights=(1.0, 1.0))
 creator.create("Individual", list, fitness=creator.FitnessMax)
@@ -40,10 +40,11 @@ toolbox = base.Toolbox()
 
 
 # =============================================================================
-# 3. Core Evaluation (Numba Optimized) - YOUR CODE PRESERVED
+# 3. Core Evaluation (Numba Optimized)
 # =============================================================================
 @njit(fastmath=True)
 def _has_path_fast(grid, digits):
+    """Ultra-fast pathfinding using static stack."""
     rows, cols = grid.shape
     digit_len = digits.shape[0]
     deltas = np.array([[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]], dtype=np.int64)
@@ -71,6 +72,7 @@ def _has_path_fast(grid, digits):
 
 @njit(fastmath=True)
 def _get_digits_math(n):
+    """Extract digits using math only."""
     temp = np.empty(6, dtype=np.int64)
     idx = 0
     while n > 0:
@@ -85,6 +87,7 @@ def _get_digits_math(n):
 
 @njit(fastmath=True)
 def _reverse_int_math(n):
+    """Reverse integer using math only."""
     rev = 0
     while n > 0:
         rev = rev * 10 + (n % 10)
@@ -94,6 +97,7 @@ def _reverse_int_math(n):
 
 @njit
 def _evaluate_core_numba(grid_1d, rows, cols):
+    """Returns (current_score, formable)."""
     grid = grid_1d.reshape((rows, cols))
     found = np.zeros(50000, dtype=np.bool_)
     current_score, n = 49999, 1
@@ -110,6 +114,7 @@ def _evaluate_core_numba(grid_1d, rows, cols):
             current_score = n - 1
             break
         n += 1
+
     formable = max(0, min(30000, current_score) - 1000 + 1)
     for num in range(max(1000, current_score + 1), 30000):
         rev_num = _reverse_int_math(num)
@@ -121,112 +126,28 @@ def _evaluate_core_numba(grid_1d, rows, cols):
             formable += 1
             found[num] = True
             if rev_num < 50000: found[rev_num] = True
+
     return float(current_score), float(formable)
 
 
-@njit(fastmath=True)
-def _full_digit_cycle_numba(grid):
-    """Numba 호환용 full_digit_cycle_mutation"""
-    digits = np.arange(10)
-    np.random.shuffle(digits)
-    mapping = np.empty(10, dtype=np.int64)
-    for i in range(10):
-        mapping[digits[i]] = digits[(i + 1) % 10]
-
-    rows, cols = grid.shape
-    for i in range(rows):
-        for j in range(cols):
-            grid[i, j] = mapping[grid[i, j]]
-
-
-@njit(fastmath=True)
-def _dlas_core_numba(initial_grid, initial_score, max_idle, rows, cols):
-    """C-Speed로 동작하는 DLAS 핵심 루프"""
-    states = np.empty((3, rows, cols), dtype=np.int64)
-    states[0] = initial_grid.copy()
-    states[1] = initial_grid.copy()
-    states[2] = initial_grid.copy()
-
-    scores = np.array([initial_score, initial_score, initial_score], dtype=np.float64)
-    cur_idx = 0
-    best_idx = 0
-
-    L = 20
-    history = np.empty(L, dtype=np.float64)
-    for i in range(L):
-        history[i] = initial_score
-
-    h_idx = 0
-    idle_iter = 0
-
-    while idle_iter < max_idle:
-        cand_idx = (cur_idx + 1) % 3
-        if cand_idx == best_idx:
-            cand_idx = (cand_idx + 1) % 3
-
-        for r in range(rows):
-            for c in range(cols):
-                states[cand_idx, r, c] = states[cur_idx, r, c]
-
-        # Mutation (Numba 내부에서는 np.random 사용)
-        if np.random.rand() < 0.9:
-            r, c = np.random.randint(0, rows), np.random.randint(0, cols)
-            states[cand_idx, r, c] = np.random.randint(0, 10)
-        else:
-            # 복잡한 MUTATION_TYPES 대신 빠른 다중 포인트 변이 적용
-            for _ in range(3):
-                r, c = np.random.randint(0, rows), np.random.randint(0, cols)
-                states[cand_idx, r, c] = np.random.randint(0, 10)
-
-        # 평가
-        grid_1d = states[cand_idx].ravel()
-        new_score, _ = _evaluate_core_numba(grid_1d, rows, cols)
-
-        # DLAS 수락 기준
-        if new_score > scores[best_idx]:
-            scores[cand_idx] = new_score
-            best_idx = cur_idx = cand_idx
-            idle_iter = 0
-        elif new_score >= history[h_idx] or new_score >= scores[cur_idx]:
-            scores[cand_idx] = new_score
-            cur_idx = cand_idx
-            idle_iter += 1
-        else:
-            idle_iter += 1
-
-        history[h_idx] = scores[cur_idx]
-        h_idx = (h_idx + 1) % L
-
-        # 정체 시 강제 변이
-        if idle_iter == int(max_idle * 0.4):
-            cur_idx = best_idx
-            _full_digit_cycle_numba(states[cur_idx])
-            grid_1d = states[cur_idx].ravel()
-            new_score, _ = _evaluate_core_numba(grid_1d, rows, cols)
-            scores[cur_idx] = new_score
-
-    return states[best_idx].ravel(), scores[best_idx]
-
-
 def eval_814_heuristic(individual):
+    """Fitness: (current_score, formable) - Score is prioritized."""
     global GLOBAL_MAX_SCORE
     grid_1d = np.array(individual, dtype=np.int64)
     current_score, formable = _evaluate_core_numba(grid_1d, IND_ROWS, IND_COLS)
     if current_score > GLOBAL_MAX_SCORE:
         GLOBAL_MAX_SCORE = current_score
-    return float(current_score), float(formable)  # Score first
+    return float(current_score), float(formable)
 
 
 toolbox.register("evaluate", eval_814_heuristic)
 
 
 # =============================================================================
-# 4. Custom Genetic Operators (Mate, Select)
+# 4. Custom Genetic Operators
 # =============================================================================
 def custom_mate(ind1, ind2):
-    """
-    Performs a 2D block-based crossover between two parent grids.
-    """
+    """2D block crossover."""
     grid1 = np.array(ind1).reshape(IND_ROWS, IND_COLS)
     grid2 = np.array(ind2).reshape(IND_ROWS, IND_COLS)
     sy, sx = random.randint(0, IND_ROWS - 2), random.randint(0, IND_COLS - 2)
@@ -237,10 +158,7 @@ def custom_mate(ind1, ind2):
 
 
 def custom_select(pop, stagnation_counter, nd_select, k, forbidden_items=None):
-    """
-    Selects the next generation, dynamically adjusting strategies
-    if the Stagnation Mode is active.
-    """
+    """Custom selection with elite protection."""
     global STAGNATION_MODE, CURRENT_CXPB, CURRENT_MUTPB
     STAGNATION_MODE = (stagnation_counter >= STAGNATION_LIMIT)
 
@@ -260,13 +178,13 @@ def custom_select(pop, stagnation_counter, nd_select, k, forbidden_items=None):
         candidates = tools.selNSGA2(pop, select_size, nd=nd_select)
     else:
         candidates = tools.selTournamentDCD(pop, select_size)
+
     selected = []
     for ind in candidates:
         if tuple(ind) not in seen:
             seen.add(tuple(ind))
             selected.append(toolbox.clone(ind))
-            if len(selected) == target_size:
-                break
+            if len(selected) == target_size: break
 
     if len(selected) < target_size:
         fillers = tools.selNSGA2(pop, target_size - len(selected))
@@ -276,8 +194,23 @@ def custom_select(pop, stagnation_counter, nd_select, k, forbidden_items=None):
                 toolbox.mutate(child)
                 del child.fitness.values
             selected.append(child)
-
     return selected[:target_size]
+
+
+def analysis_file(pool, pop):
+    """Evaluates the initial population using multiprocessing."""
+    global GLOBAL_MAX_SCORE
+    toolbox.register("map", pool.map)
+    fitnesses = list(toolbox.map(toolbox.evaluate, pop))
+    for ind, fit in zip(pop, fitnesses):
+        ind.fitness.values = fit
+    update_crowding(pop)
+
+    # formable (count) is values[0]
+    GLOBAL_MAX_SCORE = max([ind.fitness.values[0] for ind in pop])
+    sys.stdout.write(f"Initial Max Count (Score): {GLOBAL_MAX_SCORE:.0f}\n")
+    sys.stdout.flush()
+    return GLOBAL_MAX_SCORE
 
 
 toolbox.register("mate", custom_mate)
@@ -288,7 +221,7 @@ toolbox.register("select", custom_select)
 # 5. Mutation Strategies
 # =============================================================================
 def directional_spread_mutation(grid):
-    """Spreads existing digits to neighboring cells to extend paths."""
+    """Spreads existing digits to neighboring cells."""
     indpb_r = 0.01 * random.randint(1, 3)
     for row in range(IND_ROWS):
         for col in range(IND_COLS):
@@ -321,7 +254,7 @@ def cyclic_remapping_mutation(grid):
 
 
 def directional_cyclic_one_shift_mutation(grid):
-    """Cyclically shifts a line (row, column or diagonal) by random amount."""
+    """Cyclically shifts a line by random amount."""
     rows, cols = grid.shape
     mutated = False
     while not mutated:
@@ -349,7 +282,7 @@ def directional_cyclic_one_shift_mutation(grid):
 
 
 def quadrant_border_rotate_mutation(grid):
-    """Rotates the border of one quadrant around random center line."""
+    """Rotates the border of one quadrant."""
     rows, cols = grid.shape
     mutated = False
     while not mutated:
@@ -385,7 +318,7 @@ def full_digit_cycle_mutation(grid):
 
 
 # =============================================================================
-# 6. Mutation Config & Main Mutator
+# 6. Mutation Config
 # =============================================================================
 MUTATION_TYPES = [
     directional_spread_mutation,
@@ -395,8 +328,8 @@ MUTATION_TYPES = [
     full_digit_cycle_mutation
 ]
 
-NORMAL_PROBS = [0.20, 0.20, 0.20, 0.20, 0.20]
-STAGNATION_PROBS = [0.30, 0.05, 0.30, 0.30, 0.05]
+NORMAL_PROBS = [0.30, 0.30, 0.05, 0.05, 0.30]
+STAGNATION_PROBS = [0.20, 0.20, 0.20, 0.20, 0.20]
 
 
 def custom_mutate(individual, indpb=0.05):
@@ -424,7 +357,7 @@ toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 # 7. Utilities & File I/O
 # =============================================================================
 def reset_random_seed():
-    """Forces hardware-level randomness for diversity."""
+    """Forces hardware-level randomness."""
     seed_bytes = os.urandom(4)
     new_seed = int.from_bytes(seed_bytes, byteorder='big')
     random.seed(new_seed)
@@ -482,10 +415,81 @@ def save_result(pop, g):
     sys.stdout.write(f"Final TOP saved to {FILENAME}\n")
 
 
-def perform_dlas_local_search(pop):
-    """Diversified Late Acceptance Search - Prioritizing consecutive score."""
-    global GLOBAL_MAX_SCORE
+# =============================================================================
+# 8. DLAS (Score Focus)
+# =============================================================================
+@njit(fastmath=True)
+def _full_digit_cycle_numba(grid):
+    """Numba version of full_digit_cycle_mutation."""
+    digits = np.arange(10)
+    np.random.shuffle(digits)
+    mapping = np.empty(10, dtype=np.int64)
+    for i in range(10):
+        mapping[digits[i]] = digits[(i + 1) % 10]
+    rows, cols = grid.shape
+    for i in range(rows):
+        for j in range(cols):
+            grid[i, j] = mapping[grid[i, j]]
 
+
+@njit(fastmath=True)
+def _dlas_score_core_numba(initial_grid, initial_score, max_idle, rows, cols):
+    """Numba-accelerated DLAS core for consecutive score."""
+    states = np.empty((3, rows, cols), dtype=np.int64)
+    states[0] = initial_grid.copy()
+    states[1] = initial_grid.copy()
+    states[2] = initial_grid.copy()
+
+    scores = np.array([initial_score, initial_score, initial_score], dtype=np.float64)
+    cur_idx = 0
+    best_idx = 0
+    L = 20
+    history = np.full(L, initial_score, dtype=np.float64)
+    h_idx = 0
+    idle_iter = 0
+
+    while idle_iter < max_idle:
+        cand_idx = (cur_idx + 1) % 3
+        if cand_idx == best_idx:
+            cand_idx = (cand_idx + 1) % 3
+        states[cand_idx][:] = states[cur_idx]
+
+        if np.random.rand() < 0.9:
+            r, c = np.random.randint(0, rows), np.random.randint(0, cols)
+            states[cand_idx, r, c] = np.random.randint(0, 10)
+        else:
+            for _ in range(3):
+                r, c = np.random.randint(0, rows), np.random.randint(0, cols)
+                states[cand_idx, r, c] = np.random.randint(0, 10)
+
+        new_score, _ = _evaluate_core_numba(states[cand_idx].ravel(), rows, cols)
+
+        if new_score > scores[best_idx]:
+            scores[cand_idx] = new_score
+            best_idx = cur_idx = cand_idx
+            idle_iter = 0
+        elif new_score >= history[h_idx] or new_score >= scores[cur_idx]:
+            scores[cand_idx] = new_score
+            cur_idx = cand_idx
+            idle_iter += 1
+        else:
+            idle_iter += 1
+
+        history[h_idx] = scores[cur_idx]
+        h_idx = (h_idx + 1) % L
+
+        if idle_iter == int(max_idle * 0.4):
+            cur_idx = best_idx
+            _full_digit_cycle_numba(states[cur_idx])
+            new_score, _ = _evaluate_core_numba(states[cur_idx].ravel(), rows, cols)
+            scores[cur_idx] = new_score
+
+    return states[best_idx].ravel(), scores[best_idx]
+
+
+def perform_dlas_score_local_search(pop):
+    """DLAS optimized for consecutive score."""
+    global GLOBAL_MAX_SCORE
     best_ind = tools.selBest(pop, 1)[0]
     initial_grid = np.array(best_ind).reshape(IND_ROWS, IND_COLS).copy()
     initial_score = float(best_ind.fitness.values[0])
@@ -493,111 +497,73 @@ def perform_dlas_local_search(pop):
     sys.stdout.write(f"\nDLAS (Score Focus) Started | Initial Score: {initial_score:.0f}\n")
     sys.stdout.flush()
 
-    best_grid_1d, best_score = _dlas_core_numba(initial_grid, initial_score, 10000, IND_ROWS, IND_COLS)
+    best_grid_1d, best_score = _dlas_score_core_numba(initial_grid, initial_score, 100, IND_ROWS, IND_COLS)
 
     best_ind[:] = best_grid_1d.tolist()
     del best_ind.fitness.values
-    toolbox.evaluate(best_ind)
+    best_ind.fitness.values = toolbox.evaluate(best_ind)
     update_crowding(pop)
 
-    GLOBAL_MAX_SCORE = max([ind.fitness.values[0] for ind in pop])
-    sys.stdout.write(f"DLAS Finished | Best Score: {GLOBAL_MAX_SCORE:.0f}\n")
+    current_max_score = max([ind.fitness.values[0] for ind in pop])
+    sys.stdout.write(f"DLAS Finished | Best Score: {current_max_score:.0f}\n")
     sys.stdout.flush()
 
+    GLOBAL_MAX_SCORE = current_max_score
     return GLOBAL_MAX_SCORE
 
 
 # =============================================================================
-# 8. Main Evolutionary Process
+# 9. Generation & Main
 # =============================================================================
-def numba_precomputation():
-    """Triggers Numba compilation before multiprocessing."""
-    sys.stdout.write("Precompiling Numba function...\n")
-    sys.stdout.flush()
-    _has_path_fast(np.zeros((IND_ROWS, IND_COLS), dtype=np.int64), np.array([1], dtype=np.int64))
-    sys.stdout.write("Numba compilation complete.\n")
-    sys.stdout.flush()
-
-
-def analysis_file(pool, pop):
-    """Evaluates initial population using multiprocessing."""
-    global GLOBAL_MAX_SCORE
-    toolbox.register("map", pool.map)
-    fitnesses = list(toolbox.map(toolbox.evaluate, pop))
-    for ind, fit in zip(pop, fitnesses):
-        ind.fitness.values = fit
-    update_crowding(pop)
-    GLOBAL_MAX_SCORE = max([ind.fitness.values[0] for ind in pop])
-    sys.stdout.write(f"Initial Max Score: {GLOBAL_MAX_SCORE:.0f}\n")
-    sys.stdout.flush()
-    return GLOBAL_MAX_SCORE
-
-
 def generation(g, pop, max_score_all_time, stagnation_counter, seed_counter, last_max):
-    """
-    Processes one generation of evolution.
+    """Single generation step."""
+    global GLOBAL_MAX_SCORE, STAGNATION_MODE
 
-    @param g: Current generation number
-    @param pop: Current population list
-    @param max_score_all_time: Global best score so far
-    @param stagnation_counter: Counter for mass mutation trigger
-    @param seed_counter: Counter for random seed reset
-    @param last_max: Previous generation's max score
-    @return: Updated (max_score_all_time, stagnation_counter, seed_counter, last_max)
-    """
-    global GLOBAL_MAX_SCORE
-
-    # 1. Elite Preservation
+    # Elite Preservation
     best_set = tools.selBest(pop, ELITE_BEST_SIZE)
     elites = list(map(toolbox.clone, best_set + tools.selNSGA2(
         [i for i in pop if i not in best_set], ELITE_SIZE)))
-
     forbidden = elites
 
-    # 2. Breed Offspring
+    # Offspring
     offspring_candidates = [p for p in tools.selBest(pop, len(pop))[ELITE_SIZE:]]
     offspring = list(map(toolbox.clone, toolbox.select(
         offspring_candidates, stagnation_counter, 'standard',
         TARGET_POP - ELITE_SIZE, forbidden_items=forbidden)))
 
-    # 3. Crossover
+    # Crossover
     for c1, c2 in zip(offspring[::2], offspring[1::2]):
         if random.random() < CURRENT_CXPB:
             toolbox.mate(c1, c2)
             del c1.fitness.values, c2.fitness.values
 
-    # 4. Mutation
+    # Mutation
     for mutant in offspring:
         if random.random() < CURRENT_MUTPB:
             toolbox.mutate(mutant)
             del mutant.fitness.values
 
-    # 5. Evaluation
+    # Evaluation
     invalid = [ind for ind in pop + offspring if not ind.fitness.valid]
     if invalid:
         for ind, fit in zip(invalid, list(toolbox.map(toolbox.evaluate, invalid))):
             ind.fitness.values = fit
 
-    # 6. Update Population
     pop[:] = elites + offspring
     update_crowding(pop)
-
     current_max = max([ind.fitness.values[0] for ind in pop])
 
-    # 7. Record Breaking Check
+    # Record check
     if current_max > max_score_all_time:
         sys.stdout.write(f"!! NEW RECORD! Gen {g}: {max_score_all_time:.0f} -> {current_max:.0f}\n")
         sys.stdout.flush()
-
         max_score_all_time = GLOBAL_MAX_SCORE = current_max
-
         with open(FILENAME, 'a') as f:
             best_grid = np.array(toolbox.clone(pop[np.argmax([i.fitness.values[0] for i in pop])])).reshape(IND_ROWS,
                                                                                                             IND_COLS)
             for row in best_grid:
                 f.write(''.join(map(str, row)) + '\n')
             f.write('\n')
-
         stagnation_counter = 0
         seed_counter = 0
         last_max = current_max
@@ -606,27 +572,25 @@ def generation(g, pop, max_score_all_time, stagnation_counter, seed_counter, las
         seed_counter += 1
         last_max = current_max
 
-    # 8. Random Seed Diversification
+    # Seed reset
     if seed_counter > G_STAG_GROUP:
         reset_random_seed()
         seed_counter = 0
-        sys.stdout.flush()
 
-    # 9. Console Logging
+    # Logging
     if g % G_PRINT_GROUP == 0:
         all_scores = [ind.fitness.values[0] for ind in pop]
         current_avg = np.mean(all_scores)
         q1, median, q3 = np.percentile(all_scores, [25, 50, 75])
-
         sys.stdout.write(
             f"Gen {g:5d} | Max: {current_max:>6.0f} | Avg: {current_avg:>6.1f} | "
             f"Q3: {q3:>6.1f} | Med: {median:>6.1f} | Q1: {q1:>6.1f}\n"
         )
         sys.stdout.flush()
 
-    # 10. Mass Mutation / DLAS Check
+    # DLAS trigger
     if stagnation_counter >= STAGNATION_LIMIT:
-        new_max = perform_dlas_local_search(pop)
+        new_max = perform_dlas_score_local_search(pop)
         stagnation_counter = 0
         last_max = new_max
         max_score_all_time = new_max
@@ -634,9 +598,6 @@ def generation(g, pop, max_score_all_time, stagnation_counter, seed_counter, las
     return max_score_all_time, stagnation_counter, seed_counter, last_max
 
 
-# =============================================================================
-# 9. Main
-# =============================================================================
 def main():
     pop = load_individuals_from_file()
     with multiprocessing.Pool() as pool:
