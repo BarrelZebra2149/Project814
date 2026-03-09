@@ -14,19 +14,18 @@ IND_ROWS = 8
 IND_COLS = 14
 IND_SIZE = IND_ROWS * IND_COLS
 INT_MIN, INT_MAX = 0, 9
-FILENAME = 'final_gen_sep1.txt'
+FILENAME = 'final_gen1.txt'
 
 TARGET_POP = 100
-NGEN = 500000
+NGEN = 1000000
 G_PRINT_GROUP = 10
-G_STAG_GROUP = 200
-STAGNATION_LIMIT = 100
+STAGNATION_LIMIT = 200000
 
-ELITE_SIZE = 5
+ELITE_SIZE = 10
 ELITE_BEST_SIZE = 10
 
 CURRENT_CXPB = 0.3
-CURRENT_MUTPB = 0.9
+CURRENT_MUTPB = 0.8
 
 GLOBAL_MAX_SCORE = 0.0
 STAGNATION_MODE = False
@@ -37,6 +36,14 @@ STAGNATION_MODE = False
 creator.create("FitnessMax", base.Fitness, weights=(1.0, 1.0))
 creator.create("Individual", list, fitness=creator.FitnessMax)
 toolbox = base.Toolbox()
+
+
+def get_secure_rng():
+    seed_128 = int.from_bytes(os.urandom(16), byteorder='big')
+    return np.random.default_rng(seed_128)
+
+
+rng = get_secure_rng()
 
 
 # =============================================================================
@@ -115,8 +122,8 @@ def _evaluate_core_numba(grid_1d, rows, cols):
             break
         n += 1
 
-    formable = max(0, min(30000, current_score) - 1000 + 1)
-    for num in range(max(1000, current_score + 1), 30000):
+    formable = max(0, min(10000, current_score) - 1000 + 1)
+    for num in range(max(1000, current_score + 1), 10000):
         rev_num = _reverse_int_math(num)
         if found[num] or (num % 10 != 0 and rev_num < 50000 and found[rev_num]):
             formable += 1
@@ -147,11 +154,14 @@ toolbox.register("evaluate", eval_814_heuristic)
 # 4. Custom Genetic Operators
 # =============================================================================
 def custom_mate(ind1, ind2):
-    """2D block crossover."""
     grid1 = np.array(ind1).reshape(IND_ROWS, IND_COLS)
     grid2 = np.array(ind2).reshape(IND_ROWS, IND_COLS)
-    sy, sx = random.randint(0, IND_ROWS - 2), random.randint(0, IND_COLS - 2)
-    ey, ex = random.randint(sy + 1, IND_ROWS), random.randint(sx + 1, IND_COLS)
+
+    sy = rng.integers(0, IND_ROWS - 1)
+    sx = rng.integers(0, IND_COLS - 1)
+    ey = rng.integers(sy + 1, IND_ROWS + 1)
+    ex = rng.integers(sx + 1, IND_COLS + 1)
+
     grid1[sy:ey, sx:ex], grid2[sy:ey, sx:ex] = grid2[sy:ey, sx:ex].copy(), grid1[sy:ey, sx:ex].copy()
     ind1[:], ind2[:] = grid1.flatten().tolist(), grid2.flatten().tolist()
     return ind1, ind2
@@ -168,13 +178,13 @@ def custom_select(pop, stagnation_counter, nd_select, k, forbidden_items=None):
         for f_ind in forbidden_items:
             seen.add(tuple(f_ind))
 
-    select_size = int(len(pop) * 0.7)
+    select_size = int(len(pop) * 0.8)
     r = random.random()
-    if r < 0.40:
+    if r < 0.45:
         candidates = tools.selBest(pop, select_size)
     elif r < 0.50:
-        candidates = tools.selRandom(pop, select_size)
-    elif r < 0.65:
+        candidates = tools.selWorst(pop, select_size)
+    elif r < 0.55:
         candidates = tools.selNSGA2(pop, select_size, nd=nd_select)
     else:
         candidates = tools.selTournamentDCD(pop, select_size)
@@ -216,101 +226,75 @@ def analysis_file(pool, pop):
 toolbox.register("mate", custom_mate)
 toolbox.register("select", custom_select)
 
-
 # =============================================================================
 # 5. Mutation Strategies
 # =============================================================================
+
+EDGE_POSITIONS = None
+
+
+def init_edge_positions():
+    global EDGE_POSITIONS
+    edges = []
+
+    for c in range(IND_COLS):
+        edges.append((0, c))
+
+    for c in range(IND_COLS):
+        edges.append((7, c))
+
+    for r in range(1, IND_ROWS - 1):
+        edges.append((r, 0))
+
+    for r in range(1, IND_ROWS - 1):
+        edges.append((r, IND_COLS - 1))
+
+    EDGE_POSITIONS = np.array(edges, dtype=np.int64)
+
+
 def directional_spread_mutation(grid):
-    """Spreads existing digits to neighboring cells."""
-    indpb_r = 0.01 * random.randint(1, 3)
-    for row in range(IND_ROWS):
-        for col in range(IND_COLS):
-            if random.random() < indpb_r:
-                deltas = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-                possible = [(dr, dc) for dr, dc in deltas if 0 <= row + dr < IND_ROWS and 0 <= col + dc < IND_COLS]
-                if possible:
-                    dr, dc = random.choice(possible)
-                    if (dr * dc != 0) != (random.random() < 0.5):
-                        grid[row + dr, col + dc] = grid[row, col]
-                    else:
-                        grid[row + dr, col + dc] = random.randint(0, 9)
+    num_spread = rng.integers(1, 6)
+    for _ in range(num_spread):
+        if rng.random() < 0.5 and EDGE_POSITIONS is not None:
+            idx = rng.integers(0, len(EDGE_POSITIONS))
+            tr, tc = EDGE_POSITIONS[idx]
+        else:
+            tr = rng.integers(1, IND_ROWS - 1)
+            tc = rng.integers(1, IND_COLS - 1)
+
+        deltas = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+        dr, dc = deltas[rng.integers(0, 8)]
+        sr, sc = tr + dr, tc + dc
+
+        if 0 <= sr < IND_ROWS and 0 <= sc < IND_COLS:
+            if rng.random() < 0.5:
+                grid[tr, tc] = grid[sr, sc]
+            else:
+                grid[tr, tc] = rng.integers(0, 10)
 
 
 def cyclic_remapping_mutation(grid):
-    """Shuffles a selected subset of digits globally."""
-    k = random.randint(1, 10)
-    selected = random.sample(range(10), k)
-    if k <= 2 or (3 <= k < 5 and random.random() < 0.5):
-        remaining = [x for x in range(10) if x not in selected]
-        perm = random.sample(remaining, k)
+    k = rng.integers(1, 8)
+    selected = rng.choice(np.arange(10), size=k, replace=False)
+
+    if k <= 2 or (3 <= k < 5 and rng.random() < 0.5):
+        remaining = np.array([x for x in range(10) if x not in selected])
+        perm = rng.choice(remaining, size=k, replace=False)
     else:
-        shift = random.randint(1, k - 1)
-        perm = selected[-shift:] + selected[:-shift]
+        shift = rng.integers(1, k)
+        perm = np.roll(selected, shift)
+
     mapping = dict(zip(selected, perm))
     for i in range(IND_ROWS):
         for j in range(IND_COLS):
-            if grid[i, j] in mapping:
-                grid[i, j] = mapping[grid[i, j]]
-
-
-def directional_cyclic_one_shift_mutation(grid):
-    """Cyclically shifts a line by random amount."""
-    rows, cols = grid.shape
-    mutated = False
-    while not mutated:
-        r, c = random.randint(0, rows - 1), random.randint(0, cols - 1)
-        deltas = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-        dr, dc = random.choice(deltas)
-        line_coords = []
-        cr, cc = r, c
-        while 0 <= cr < rows and 0 <= cc < cols:
-            line_coords.append((cr, cc))
-            cr += dr
-            cc += dc
-        cr, cc = r - dr, c - dc
-        while 0 <= cr < rows and 0 <= cc < cols:
-            line_coords.insert(0, (cr, cc))
-            cr -= dr
-            cc -= dc
-        if len(line_coords) >= 3:
-            values = [grid[pr, pc] for pr, pc in line_coords]
-            shift = random.randint(1, len(line_coords) - 1)
-            shifted_values = values[-shift:] + values[:-shift]
-            for i, (pr, pc) in enumerate(line_coords):
-                grid[pr, pc] = shifted_values[i]
-            mutated = True
-
-
-def quadrant_border_rotate_mutation(grid):
-    """Rotates the border of one quadrant."""
-    rows, cols = grid.shape
-    mutated = False
-    while not mutated:
-        rt = random.randint(1, rows - 2)
-        ct = random.randint(1, cols - 2)
-        quads = [(0, rt, 0, ct), (0, rt, ct + 1, cols - 1),
-                 (rt + 1, rows - 1, 0, ct), (rt + 1, rows - 1, ct + 1, cols - 1)]
-        r1, r2, c1, c2 = random.choice(quads)
-        border = []
-        for c in range(c1, c2 + 1): border.append((r1, c))
-        for r in range(r1 + 1, r2 + 1): border.append((r, c2))
-        for c in range(c2 - 1, c1 - 1, -1): border.append((r2, c))
-        for r in range(r2 - 1, r1, -1): border.append((r, c1))
-        if len(border) >= 4:
-            values = [grid[pr, pc] for pr, pc in border]
-            if random.random() < 0.5:
-                shifted = [values[-1]] + values[:-1]
-            else:
-                shifted = values[1:] + [values[0]]
-            for i, (pr, pc) in enumerate(border):
-                grid[pr, pc] = shifted[i]
-            mutated = True
+            val = grid[i, j]
+            if val in mapping:
+                grid[i, j] = mapping[val]
 
 
 def full_digit_cycle_mutation(grid):
-    """Strong global remapping: cyclic shift of all 10 digits."""
-    digits = list(range(10))
-    random.shuffle(digits)
+    digits = np.arange(10)
+    rng.shuffle(digits)
     mapping = {digits[i]: digits[(i + 1) % 10] for i in range(10)}
     for i in range(IND_ROWS):
         for j in range(IND_COLS):
@@ -323,13 +307,11 @@ def full_digit_cycle_mutation(grid):
 MUTATION_TYPES = [
     directional_spread_mutation,
     cyclic_remapping_mutation,
-    directional_cyclic_one_shift_mutation,
-    quadrant_border_rotate_mutation,
     full_digit_cycle_mutation
 ]
 
-NORMAL_PROBS = [0.30, 0.30, 0.05, 0.05, 0.30]
-STAGNATION_PROBS = [0.20, 0.20, 0.20, 0.20, 0.20]
+NORMAL_PROBS = [0.30, 0.40, 0.30]
+STAGNATION_PROBS = [0.30, 0.40, 0.30]
 
 
 def custom_mutate(individual, indpb=0.05):
@@ -348,7 +330,7 @@ def custom_mutate(individual, indpb=0.05):
 
 
 toolbox.register("mutate", custom_mutate, indpb=0.05)
-toolbox.register("attr_int", random.randint, INT_MIN, INT_MAX)
+toolbox.register("attr_int", lambda: int(rng.integers(INT_MIN, INT_MAX + 1)))
 toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_int, IND_SIZE)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
@@ -356,12 +338,12 @@ toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 # =============================================================================
 # 7. Utilities & File I/O
 # =============================================================================
+
 def reset_random_seed():
-    """Forces hardware-level randomness."""
-    seed_bytes = os.urandom(4)
-    new_seed = int.from_bytes(seed_bytes, byteorder='big')
-    random.seed(new_seed)
-    np.random.seed(new_seed)
+    global rng
+    rng = get_secure_rng()
+    random.seed(int(rng.integers(0, 2 ** 63)))
+    np.random.seed(int(rng.integers(0, 2 ** 32 - 1)))
 
 
 def update_crowding(population):
@@ -398,13 +380,14 @@ def load_individuals_from_file():
     fitnesses = list(map(toolbox.evaluate, pop))
     for ind, fit in zip(pop, fitnesses):
         ind.fitness.values = fit
-    return tools.selBest(pop, TARGET_POP)
+    update_crowding(pop)
+    return tools.selBest(pop, 30) + tools.selWorst(pop, 30) + tools.selRandom(pop, TARGET_POP - 60)
 
 
 def save_result(pop, g):
     """Saves final top individuals to file."""
     sys.stdout.write(f"\n{'=' * 60}\nEvolution finished after {g} generations.\n")
-    top_k = tools.selBest(pop, k=ELITE_SIZE * 4)
+    top_k = tools.selBest(pop, k=50)
     with open(FILENAME, 'a') as f:
         f.write(f"\n--- Final TOP {len(top_k)} ---\n")
         for rank, ind in enumerate(top_k, 1):
@@ -415,101 +398,37 @@ def save_result(pop, g):
     sys.stdout.write(f"Final TOP saved to {FILENAME}\n")
 
 
-# =============================================================================
-# 8. DLAS (Score Focus)
-# =============================================================================
-@njit(fastmath=True)
-def _full_digit_cycle_numba(grid):
-    """Numba version of full_digit_cycle_mutation."""
-    digits = np.arange(10)
-    np.random.shuffle(digits)
-    mapping = np.empty(10, dtype=np.int64)
-    for i in range(10):
-        mapping[digits[i]] = digits[(i + 1) % 10]
-    rows, cols = grid.shape
-    for i in range(rows):
-        for j in range(cols):
-            grid[i, j] = mapping[grid[i, j]]
+def perform_mass_mutation(pop):
+    """
+    Mass Mutation Event triggered strictly during extreme stagnation.
+    Removes elite protection, forcing one round of mutation on the entire population,
+    and immediately re-evaluates all individuals.
 
-
-@njit(fastmath=True)
-def _dlas_score_core_numba(initial_grid, initial_score, max_idle, rows, cols):
-    """Numba-accelerated DLAS core for consecutive score."""
-    states = np.empty((3, rows, cols), dtype=np.int64)
-    states[0] = initial_grid.copy()
-    states[1] = initial_grid.copy()
-    states[2] = initial_grid.copy()
-
-    scores = np.array([initial_score, initial_score, initial_score], dtype=np.float64)
-    cur_idx = 0
-    best_idx = 0
-    L = 20
-    history = np.full(L, initial_score, dtype=np.float64)
-    h_idx = 0
-    idle_iter = 0
-
-    while idle_iter < max_idle:
-        cand_idx = (cur_idx + 1) % 3
-        if cand_idx == best_idx:
-            cand_idx = (cand_idx + 1) % 3
-        states[cand_idx][:] = states[cur_idx]
-
-        if np.random.rand() < 0.9:
-            r, c = np.random.randint(0, rows), np.random.randint(0, cols)
-            states[cand_idx, r, c] = np.random.randint(0, 10)
-        else:
-            for _ in range(3):
-                r, c = np.random.randint(0, rows), np.random.randint(0, cols)
-                states[cand_idx, r, c] = np.random.randint(0, 10)
-
-        new_score, _ = _evaluate_core_numba(states[cand_idx].ravel(), rows, cols)
-
-        if new_score > scores[best_idx]:
-            scores[cand_idx] = new_score
-            best_idx = cur_idx = cand_idx
-            idle_iter = 0
-        elif new_score >= history[h_idx] or new_score >= scores[cur_idx]:
-            scores[cand_idx] = new_score
-            cur_idx = cand_idx
-            idle_iter += 1
-        else:
-            idle_iter += 1
-
-        history[h_idx] = scores[cur_idx]
-        h_idx = (h_idx + 1) % L
-
-        if idle_iter == int(max_idle * 0.4):
-            cur_idx = best_idx
-            _full_digit_cycle_numba(states[cur_idx])
-            new_score, _ = _evaluate_core_numba(states[cur_idx].ravel(), rows, cols)
-            scores[cur_idx] = new_score
-
-    return states[best_idx].ravel(), scores[best_idx]
-
-
-def perform_dlas_score_local_search(pop):
-    """DLAS optimized for consecutive score."""
+    @param pop: The current population list.
+    @return: The newly found maximum score after the mass mutation event.
+    """
     global GLOBAL_MAX_SCORE
-    best_ind = tools.selBest(pop, 1)[0]
-    initial_grid = np.array(best_ind).reshape(IND_ROWS, IND_COLS).copy()
-    initial_score = float(best_ind.fitness.values[0])
-
-    sys.stdout.write(f"\nDLAS (Score Focus) Started | Initial Score: {initial_score:.0f}\n")
+    sys.stdout.write(f"\n{'=' * 10} MASS MUTATION EVENT TRIGGERED {'=' * 10}\n")
+    sys.stdout.write(f"Elite protection disabled. Forcing mutation on all {len(pop)} individuals.\n")
     sys.stdout.flush()
 
-    best_grid_1d, best_score = _dlas_score_core_numba(initial_grid, initial_score, 100, IND_ROWS, IND_COLS)
+    for ind in pop:
+        toolbox.mutate(ind)
+        del ind.fitness.values
 
-    best_ind[:] = best_grid_1d.tolist()
-    del best_ind.fitness.values
-    best_ind.fitness.values = toolbox.evaluate(best_ind)
+    invalid = [ind for ind in pop if not ind.fitness.valid]
+    if invalid:
+        fitnesses = list(toolbox.map(toolbox.evaluate, invalid))
+        for ind, fit in zip(invalid, fitnesses):
+            ind.fitness.values = fit
+
     update_crowding(pop)
+    new_max = max([ind.fitness.values[0] for ind in pop])
+    GLOBAL_MAX_SCORE = new_max
 
-    current_max_score = max([ind.fitness.values[0] for ind in pop])
-    sys.stdout.write(f"DLAS Finished | Best Score: {current_max_score:.0f}\n")
+    sys.stdout.write(f"Mass Mutation complete >> New Max: {new_max:.0f}\n{'=' * 51}\n")
     sys.stdout.flush()
-
-    GLOBAL_MAX_SCORE = current_max_score
-    return GLOBAL_MAX_SCORE
+    return new_max
 
 
 # =============================================================================
@@ -572,25 +491,19 @@ def generation(g, pop, max_score_all_time, stagnation_counter, seed_counter, las
         seed_counter += 1
         last_max = current_max
 
-    # Seed reset
-    if seed_counter > G_STAG_GROUP:
-        reset_random_seed()
-        seed_counter = 0
-
     # Logging
     if g % G_PRINT_GROUP == 0:
         all_scores = [ind.fitness.values[0] for ind in pop]
         current_avg = np.mean(all_scores)
         q1, median, q3 = np.percentile(all_scores, [25, 50, 75])
         sys.stdout.write(
-            f"Gen {g:5d} | Max: {current_max:>6.0f} | Avg: {current_avg:>6.1f} | "
+            f"Gen {g:7d} | Max: {current_max:>6.0f} | Avg: {current_avg:>6.1f} | "
             f"Q3: {q3:>6.1f} | Med: {median:>6.1f} | Q1: {q1:>6.1f}\n"
         )
         sys.stdout.flush()
 
-    # DLAS trigger
     if stagnation_counter >= STAGNATION_LIMIT:
-        new_max = perform_dlas_score_local_search(pop)
+        new_max = perform_mass_mutation(pop)
         stagnation_counter = 0
         last_max = new_max
         max_score_all_time = new_max
