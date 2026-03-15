@@ -171,7 +171,7 @@ def run_brute_force_optimization(input_file, output_file):
 
 if __name__ == "__main__":
     # Ensure input file exists before running
-    input_filename = 'target.txt'
+    input_filename = '../data/target.txt'
     output_filename = 'optimized_results.txt'
     
     run_brute_force_optimization(input_filename, output_filename)
