@@ -8,16 +8,19 @@
 #include <algorithm>
 #include <iomanip>
 #include "dlas.hpp"
+#include <stack>
 
 using Grid  = std::array<std::array<int, 14>, 8>;
 using Score = long long;
 
-static constexpr int       COUNT_LIMIT      = 10000;
+static constexpr int       COUNT_LIMIT      = 20000;
 static constexpr long long FORMABLE_SCALE   = COUNT_LIMIT;
-static constexpr int       RESTART_INTERVAL = 100;
+static constexpr int       RESTART_INTERVAL = 50;
 static constexpr long long ITERS            = 1000;
 static constexpr int       PATH_STACK_SIZE  = 65536;
 static constexpr double    MUTATE_PROB      = 0.50;
+static constexpr long long POTENTIAL_OFFSET = 1000000LL; 
+static constexpr int       TARGET_COUNT     = 11;  
 
 std::mt19937 rng;   
 
@@ -104,44 +107,128 @@ bool has_path_fast(const Grid& grid, const int* digits, int digit_len) {
     return false;
 }
 
-// ====================== Evaluation ======================
+struct Chain {
+    int val;
+    std::vector<std::pair<int, int>> cells;
+};
+
 Score evaluate(const Grid& g) {
-    bool found[COUNT_LIMIT]{};
-    int current_score = 0;
     int digits[7];
-    bool all_formable = true;
-
+    int current_score = 0;
+    
     for (int n = 1; n < COUNT_LIMIT; ++n) {
-        int rev_n = reverse_int(n);
-        if (found[n] || (n % 10 != 0 && rev_n < COUNT_LIMIT && found[rev_n])) continue;
-
+        int rev_n = 0;
+        int temp_n = n;
+        while(temp_n > 0) { rev_n = rev_n * 10 + (temp_n % 10); temp_n /= 10; }
+        
         int len = get_digits(n, digits);
         if (has_path_fast(g, digits, len)) {
-            found[n] = true;
-            if (rev_n < COUNT_LIMIT) found[rev_n] = true;
+            continue; 
         } else {
             current_score = n - 1;
-            all_formable = false;
             break;
         }
     }
-    if (all_formable) current_score = COUNT_LIMIT - 1;
 
-    int formable = std::max(0, std::min(COUNT_LIMIT, current_score) - 1000 + 1);
-    for (int num = std::max(1000, current_score + 1); num < COUNT_LIMIT; ++num) {
-        int rev_num = reverse_int(num);
-        if (found[num] || (num % 10 != 0 && rev_num < COUNT_LIMIT && found[rev_num])) {
-            formable++; continue;
-        }
-        int len = get_digits(num, digits);
-        if (has_path_fast(g, digits, len)) {
-            formable++;
-            found[num] = true;
-            if (rev_num < COUNT_LIMIT) found[rev_num] = true;
+    std::vector<Chain> chains;
+    bool visited_bs[8][14] = {false};
+    bool visited_fs[8][14] = {false};
+
+    for (int r = 0; r < 8; ++r) {
+        for (int c = 0; c < 14; ++c) {
+            if (!visited_bs[r][c]) {
+                int val = g[r][c];
+                std::vector<std::pair<int, int>> cells;
+                int cr = r, cc = c;
+                while (cr < 8 && cc < 14 && g[cr][cc] == val) {
+                    cells.push_back({cr, cc});
+                    visited_bs[cr][cc] = true;
+                    cr++; cc++;
+                }
+                if (cells.size() >= 2) chains.push_back({val, cells});
+            }
         }
     }
-    return -((long long)current_score * FORMABLE_SCALE + formable);
+
+    for (int r = 0; r < 8; ++r) {
+        for (int c = 0; c < 14; ++c) {
+            if (!visited_fs[r][c]) {
+                int val = g[r][c];
+                std::vector<std::pair<int, int>> cells;
+                int cr = r, cc = c;
+                while (cr < 8 && cc >= 0 && g[cr][cc] == val) {
+                    cells.push_back({cr, cc});
+                    visited_fs[cr][cc] = true;
+                    cr++; cc--;
+                }
+                if (cells.size() >= 2) chains.push_back({val, cells});
+            }
+        }
+    }
+
+    int num_chains = chains.size();
+    std::vector<std::vector<int>> adj(num_chains);
+    for (int i = 0; i < num_chains; ++i) {
+        for (int j = i + 1; j < num_chains; ++j) {
+            if (chains[i].val != chains[j].val) {
+                bool connected = false;
+                for (auto& p1 : chains[i].cells) {
+                    for (auto& p2 : chains[j].cells) {
+                        if (std::abs(p1.first - p2.first) <= 1 && std::abs(p1.second - p2.second) <= 1) {
+                            adj[i].push_back(j);
+                            adj[j].push_back(i);
+                            connected = true; break;
+                        }
+                    }
+                    if (connected) break;
+                }
+            }
+        }
+    }
+
+    long long chain_bonus = 0;
+    std::vector<bool> visited_chains(num_chains, false);
+    for (int i = 0; i < num_chains; ++i) {
+        if (!visited_chains[i]) {
+            std::stack<int> s;
+            s.push(i);
+            visited_chains[i] = true;
+            int cluster_size = 0;
+
+            while (!s.empty()) {
+                int curr = s.top(); s.pop();
+                cluster_size++;
+                for (int neighbor : adj[curr]) {
+                    if (!visited_chains[neighbor]) {
+                        visited_chains[neighbor] = true;
+                        s.push(neighbor);
+                    }
+                }
+            }
+
+            if (cluster_size == 1)      chain_bonus += 10;
+            else if (cluster_size == 2) chain_bonus += 30;
+            else if (cluster_size == 3) chain_bonus += 60;
+            else if (cluster_size == 4) chain_bonus += 5;
+            else                        chain_bonus += 0; 
+        }
+    }
+
+    int counts[10] = {0};
+    for (int r = 0; r < 8; ++r)
+        for (int c = 0; c < 14; ++c)
+            counts[g[r][c]]++;
+
+    double variance_penalty = 0;
+    for (int i = 0; i < 10; ++i) {
+        variance_penalty += std::pow(counts[i] - TARGET_COUNT, 2);
+    }
+
+    long long potential_score = chain_bonus - (long long)(variance_penalty * 1.5);
+    
+    return -((long long)current_score * POTENTIAL_OFFSET + potential_score);
 }
+
 
 // ====================== Mutations ======================
 void directional_spread_mutation(Grid& g) {

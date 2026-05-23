@@ -17,14 +17,14 @@ IND_ROWS = 8
 IND_COLS = 14
 IND_SIZE = IND_ROWS * IND_COLS
 INT_MIN, INT_MAX = 0, 9
-FILENAME = '../data/G3_gen2.txt'
-TARGET_POP = 25
-NGEN = 1000000
+FILENAME = '../data/NG_LONG.txt'
+TARGET_POP = 2500
+NGEN = 100000000
 G_PRINT_GROUP = 1000
-G_SEED_GROUP = 200000
+G_SEED_GROUP = 10000
 STAGNATION_LIMIT = 100000
-ELITE_SIZE = 5
-ELITE_BEST_SIZE = 5
+ELITE_SIZE = 25
+ELITE_BEST_SIZE = 25 
 
 CURRENT_CXPB = 0.5
 CURRENT_MUTPB = 0.35
@@ -116,6 +116,7 @@ def _evaluate_core_numba(grid_1d, rows, cols):
             current_score = n - 1
             break
         n += 1
+    """
     formable = max(0, min(10000, current_score) - 1000 + 1)
     for num in range(max(1000, current_score + 1), 10000):
         rev_num = _reverse_int_math(num)
@@ -127,17 +128,111 @@ def _evaluate_core_numba(grid_1d, rows, cols):
             formable += 1
             found[num] = True
             if rev_num < 50000: found[rev_num] = True
-    return float(current_score), float(formable)
+    """
+    return float(current_score), 0.0
+
+import numpy as np
+
+fitness_cache = {}
+
+def calculate_advanced_fitness(grid, current_score):
+    rows = len(grid)
+    cols = len(grid[0])
+    chains = []
+
+    visited_bs = set()
+    for r in range(rows):
+        for c in range(cols):
+            if (r, c) not in visited_bs:
+                val = grid[r][c]
+                cells = []
+                cr, cc = r, c
+                while cr < rows and cc < cols and grid[cr][cc] == val:
+                    cells.append((cr, cc))
+                    visited_bs.add((cr, cc))
+                    cr += 1; cc += 1
+                if len(cells) >= 2:
+                    chains.append({'val': val, 'cells': cells})
+
+    visited_fs = set()
+    for r in range(rows):
+        for c in range(cols):
+            if (r, c) not in visited_fs:
+                val = grid[r][c]
+                cells = []
+                cr, cc = r, c
+                while cr < rows and cc >= 0 and grid[cr][cc] == val:
+                    cells.append((cr, cc))
+                    visited_fs.add((cr, cc))
+                    cr += 1; cc -= 1
+                if len(cells) >= 2:
+                    chains.append({'val': val, 'cells': cells})
+
+    num_chains = len(chains)
+    adj = {i: set() for i in range(num_chains)}
+
+    cell_to_chains = [[[] for _ in range(cols)] for _ in range(rows)]
+    for i, chain in enumerate(chains):
+        for r, c in chain['cells']:
+            cell_to_chains[r][c].append(i)
+
+    directions = [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]
+
+    for i, chain in enumerate(chains):
+        val_i = chain['val']
+        for r, c in chain['cells']:
+            for dr, dc in directions:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < rows and 0 <= nc < cols:
+                    for j in cell_to_chains[nr][nc]:
+                        if i != j and val_i != chains[j]['val']:
+                            adj[i].add(j)
+                            adj[j].add(i)
+
+    chain_bonus = 0
+    visited_chains = set()
+    for i in range(num_chains):
+        if i not in visited_chains:
+            stack = [i]
+            visited_chains.add(i)
+            cluster_size = 0
+            while stack:
+                curr = stack.pop()
+                cluster_size += 1
+                for nxt in adj[curr]:
+                    if nxt not in visited_chains:
+                        visited_chains.add(nxt)
+                        stack.append(nxt)
+            
+            if cluster_size == 1: chain_bonus += 10
+            elif cluster_size == 2: chain_bonus += 30
+            elif cluster_size == 3: chain_bonus += 60  
+            elif cluster_size == 4: chain_bonus += 5   
+            else: chain_bonus += 0                    
+
+    counts = np.bincount(grid.flatten(), minlength=10)
+    variance_penalty = np.sum((counts - 11) ** 2)
+
+    WEIGHT_VARIANCE = 1.5
+    final_potential = current_score + chain_bonus - (WEIGHT_VARIANCE * variance_penalty)
+    
+    return final_potential
 
 def eval_814_heuristic(individual):
-    global GLOBAL_MAX_SCORE
-    grid_1d = np.array(individual, dtype=np.int64)
-    current_score, formable = _evaluate_core_numba(grid_1d, IND_ROWS, IND_COLS)
-    if current_score > GLOBAL_MAX_SCORE:
-        GLOBAL_MAX_SCORE = current_score
-    return float(current_score), float(formable)
+    grid = np.array(individual).reshape(IND_ROWS, IND_COLS)
+    current_score = 0 
+    final_score = calculate_advanced_fitness(grid, current_score)
+    return (final_score, )
 
-toolbox.register("evaluate", eval_814_heuristic)
+def smart_evaluate(individual):
+    ind_tuple = tuple(individual)
+    if ind_tuple in fitness_cache:
+        return fitness_cache[ind_tuple]
+    fit = eval_814_heuristic(individual)
+    fitness_cache[ind_tuple] = fit
+    return fit
+
+toolbox.register("evaluate", smart_evaluate)
 
 # =============================================================================
 # 4. Custom Genetic Operators
@@ -158,19 +253,15 @@ def custom_select(pop, stagnation_counter, nd_select, k, forbidden_items=None):
     STAGNATION_MODE = (stagnation_counter >= STAGNATION_LIMIT)
     target_size = k
     seen = set()
-    if forbidden_items and not STAGNATION_MODE:
-        for f_ind in forbidden_items:
-            seen.add(tuple(f_ind))
-    select_size = int(len(pop) * 0.7)
-    r = random.random()
-    if r < 0.45:
-        candidates = tools.selBest(pop, select_size)
-    elif r < 0.50:
-        candidates = tools.selWorst(pop, select_size)
-    elif r < 0.55:
-        candidates = tools.selNSGA2(pop, select_size, nd=nd_select)
-    else:
-        candidates = tools.selTournamentDCD(pop, select_size)
+    num_tour = int(target_size * 0.70)  
+    num_nsga2 = int(target_size * 0.25) 
+    num_best = target_size - num_tour - num_nsga2 
+    
+    candidates = []
+    candidates.extend(tools.selTournamentDCD(pop, num_tour))
+    candidates.extend(tools.selNSGA2(pop, num_nsga2, nd=nd_select))
+    candidates.extend(tools.selBest(pop, num_best))
+    
     selected = []
     for ind in candidates:
         if tuple(ind) not in seen:
@@ -355,7 +446,7 @@ MUTATION_TYPES = [
     cyclic_remapping_mutation,
     adjacent_swap_mutation
 ]
-NORMAL_PROBS = [0.35, 0.30, 0.35]
+NORMAL_PROBS = [0.30, 0.40, 0.30]
 STAGNATION_PROBS = [0.25, 0.50, 0.25]
 
 def custom_mutate(individual, indpb=0.05):
@@ -420,7 +511,7 @@ def save_result(pop, g):
     top_k = tools.selBest(pop, k=25)
     with open(FILENAME, 'a') as f:
         f.write(f"\n--- Final TOP {len(top_k)} ---\n")
-        for rank, ind in enumerate(top_k, 1):
+        for rank, ind in enumerate(top_k, 500):
             tqdm.write(f"Rank {rank} - Score: {ind.fitness.values[0]:.0f}", file=TQDM_FILE)
             for row in np.array(ind).reshape(IND_ROWS, IND_COLS):
                 f.write(''.join(map(str, row)) + '\n')
@@ -517,7 +608,7 @@ def perform_mass_mutation(pop, mut_prob=0.4):
 
     if new_max > global_max_before_loop:
         tqdm.write(
-            f"Mass Mutat... NEW RECORD?! >> {GLOBAL_MAX_SCORE:.0f} -> {new_max:.0f}  "
+            f"Mass Mutat... NEW RECORD?! >> {global_max_before_loop:.0f} -> {new_max:.0f}  "
             f"(total: {total_elapsed:.1f}s)",
             file=TQDM_FILE
         )
@@ -543,29 +634,31 @@ def perform_mass_mutation(pop, mut_prob=0.4):
 # 9. Generation & Main
 # =============================================================================
 def get_stagnation_limit(current_max):
-    return 5000
+    return 50000
 
 def generation(g, pop, max_score_all_time, stagnation_counter, seed_counter, last_max):
     global GLOBAL_MAX_SCORE, STAGNATION_MODE, CURRENT_CXPB, CURRENT_MUTPB, NORMAL_PROBS
 
     if max_score_all_time >= 3000:
-        CURRENT_CXPB = 0.3
-        CURRENT_MUTPB = 0.7
-        NORMAL_PROBS = [0.40, 0.20, 0.40]
+        CURRENT_CXPB = 0.85   
+        CURRENT_MUTPB = 0.10  
+        NORMAL_PROBS = [0.15, 0.70, 0.15] 
     else:
-        CURRENT_CXPB = 0.3
-        CURRENT_MUTPB = 0.5
-        NORMAL_PROBS = [0.35, 0.30, 0.35]
+        CURRENT_CXPB = 0.5
+        CURRENT_MUTPB = 0.35
+        NORMAL_PROBS = [0.30, 0.40, 0.30]
 
     best_set = tools.selBest(pop, ELITE_BEST_SIZE)
     elites = list(map(toolbox.clone, best_set + tools.selNSGA2(
         [i for i in pop if i not in best_set], ELITE_SIZE)))
     forbidden = elites
 
-    offspring_candidates = [p for p in tools.selBest(pop, len(pop))[ELITE_SIZE:]]
+    offspring_needed = TARGET_POP - len(elites)
+    offspring_candidates = [p for p in tools.selBest(pop, len(pop))[len(elites):]]
+    
     offspring = list(map(toolbox.clone, toolbox.select(
         offspring_candidates, stagnation_counter, 'standard',
-        TARGET_POP - ELITE_SIZE, forbidden_items=forbidden)))
+        offspring_needed, forbidden_items=forbidden)))
 
     for c1, c2 in zip(offspring[::2], offspring[1::2]):
         if random.random() < CURRENT_CXPB:
@@ -577,12 +670,13 @@ def generation(g, pop, max_score_all_time, stagnation_counter, seed_counter, las
             toolbox.mutate(mutant)
             del mutant.fitness.values
 
-    invalid = [ind for ind in pop + offspring if not ind.fitness.valid]
+    pop[:] = elites + offspring
+    invalid = [ind for ind in pop if not ind.fitness.valid]
     if invalid:
-        for ind, fit in zip(invalid, list(toolbox.map(toolbox.evaluate, invalid))):
+        fitnesses = list(toolbox.map(toolbox.evaluate, invalid))
+        for ind, fit in zip(invalid, fitnesses):
             ind.fitness.values = fit
 
-    pop[:] = elites + offspring
     update_crowding(pop)
     current_max = max([ind.fitness.values[0] for ind in pop])
 

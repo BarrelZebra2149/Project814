@@ -4,7 +4,7 @@ import os
 import sys
 
 # ====================== CONFIGURATION ======================
-INPUT_FILE = 'final_gen2.txt'
+INPUT_FILE = '../data/G4_gen2.txt'
 GRID_ROWS = 8
 GRID_COLS = 14
 GRID_SIZE = GRID_ROWS * GRID_COLS
@@ -139,7 +139,7 @@ def main():
 
     print("\n" + "=" * 80)
     print(f"Total unique grids evaluated: {len(results)}")
-    print(f"Best score: {results[0][0]:.0f} | Worst in top 100: {results[99][0]:.0f}")
+    print(f"Best score: {results[0][0]:.0f}")
     print("=" * 80)
 
 

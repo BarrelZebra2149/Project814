@@ -4,8 +4,8 @@ import os
 from numba import njit
 
 # ====================== CONFIGURATION ======================
-INPUT_FILE = 'final_gen2.txt'
-OUTPUT_FILE = 'look.txt'
+INPUT_FILE = '../data/G5_gen1.txt'
+OUTPUT_FILE = '../data/G5_gen2.txt'
 
 GRID_ROWS = 8
 GRID_COLS = 14
@@ -101,7 +101,7 @@ def main():
     good_grids = []
     for genome in grids:
         score = eval_814_heuristic(genome)
-        if 4883 <= score <= 4883:
+        if 2000 <= score <= 7000:
             good_grids.append(genome)
 
     # Remove duplicates using set
