@@ -53,6 +53,8 @@ class SAConfig:
     resume: bool = True          # auto-resume if a matching checkpoint exists
     fresh: bool = False          # force a clean start, ignoring any checkpoint
     seed_file: Optional[str] = None   # extra corpus file (8x14 blocks) to seed from
+    seed_from_corpus: bool = True     # if False, ignore data/*.txt + prior run outputs and
+                                       # start every replica from a fresh random grid
 
     # --- termination --------------------------------------------------------
     max_seconds: Optional[float] = None
@@ -203,6 +205,9 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
     p.add_argument("--resume", action="store_true", default=None)
     p.add_argument("--fresh", action="store_true", default=None)
     p.add_argument("--seed-file", type=str, default=None)
+    p.add_argument("--no-seed", action="store_true",
+                    help="Ignore data/*.txt and any prior run outputs; start every "
+                         "replica from a fresh random grid instead of the existing corpus.")
 
     p.add_argument("--seconds", type=float, default=None, dest="max_seconds")
     p.add_argument("--iters", type=int, default=None, dest="max_iters")
@@ -243,6 +248,9 @@ def config_from_cli(argv=None, default_preset: str = "score_first") -> SAConfig:
         val = getattr(ns, name)
         if val is not None:
             setattr(cfg, name, val)
+
+    if ns.no_seed:
+        cfg.seed_from_corpus = False
 
     if ns.fresh:
         cfg.resume = False

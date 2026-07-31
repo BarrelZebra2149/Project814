@@ -63,8 +63,19 @@ Re-running the same command resumes automatically from
 accept mode, move probabilities, replica count). Use `--fresh` to force a
 clean start, or `--run-name` to keep multiple independent runs side by side.
 
+`--fresh` alone still seeds every replica from `data/*.txt` (the existing
+corpus, already scoring up to 7666/8142) plus any prior run's `best.txt`/
+`records.txt` — it only skips resuming the *checkpoint* (temperature, RNG
+state, iteration count, etc.), not the starting grids. For a genuine
+from-scratch run with pure random starting grids, ignoring that corpus
+entirely, add `--no-seed`:
+
+```bash
+python win_score_first.py --fresh --no-seed --run-name from_scratch
+```
+
 Useful flags: `--replicas N`, `--accept {sa,lahc,dlas}`, `--mode {pt,anneal}`,
-`--target-score N`, `--iters N`, `--seed-file path.txt`. Run
+`--target-score N`, `--iters N`, `--seed-file path.txt`, `--no-seed`. Run
 `python win_score_first.py --help` for the full list.
 
 ### First-run compile cost

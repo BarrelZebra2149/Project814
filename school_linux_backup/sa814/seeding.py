@@ -73,9 +73,21 @@ def load_corpus(data_dir: Path, extra_seed_file: str | None, run_dir: Path | Non
 
 
 def build_initial_replicas(replicas: int, data_dir: Path, extra_seed_file: str | None,
-                            run_dir: Path | None, rng: np.random.Generator) -> np.ndarray:
+                            run_dir: Path | None, rng: np.random.Generator,
+                            use_corpus: bool = True) -> np.ndarray:
     """Returns a uint8[replicas, ROWS, COLS] array: the best-scoring corpus grids
-    (deduplicated), ranked, filling remaining slots with fresh random grids."""
+    (deduplicated), ranked, filling remaining slots with fresh random grids.
+
+    If use_corpus is False, every source (data/*.txt, --seed-file, and any
+    prior run's best.txt/records.txt) is skipped entirely and every replica
+    starts from a fresh random grid -- for a genuine from-scratch run rather
+    than one seeded by the existing (very strong, up to 7666/8142) corpus."""
+    if not use_corpus:
+        return np.stack([
+            rng.integers(0, 10, size=(core.ROWS, core.COLS)).astype(np.uint8)
+            for _ in range(replicas)
+        ])
+
     corpus = load_corpus(data_dir, extra_seed_file, run_dir)
 
     seen = set()
