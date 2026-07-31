@@ -40,9 +40,6 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
     stamps = np.full((R, core.UPPER), -1, dtype=np.int64)
     gens = np.ones(R, dtype=np.int64)
     digit_bufs = np.zeros((R, core.DIGIT_BUF_LEN), dtype=np.int64)
-    line_r_bufs = np.zeros((R, 16), dtype=np.int64)
-    line_c_bufs = np.zeros((R, 16), dtype=np.int64)
-    line_val_bufs = np.zeros((R, 16), dtype=np.int64)
     rng_states = np.stack([core.make_rng_state(rng.integers(1, 2**62)) for _ in range(R)])
 
     scores_arr = np.zeros(R, dtype=np.int64)
@@ -54,7 +51,8 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
         s, l, c = core.evaluate(dmasks[i], stamps[i], 1, cfg.look_window, cfg.count_lo,
                                  cfg.count_hi, cfg.want_count, tmp_buf)
         scores_arr[i], looks_arr[i], counts_arr[i] = s, l, c
-        energies[i] = core.energy_of(s, l, c, 0.0, cfg.w_score, cfg.w_look, cfg.w_count, cfg.w_heur)
+        energies[i] = core.energy_of(s, l, c, 0.0, 0.0, cfg.w_score, cfg.w_look, cfg.w_count,
+                                      cfg.w_heur, cfg.w_triple)
 
     t0, t_end, up_frac = core.calibrate_temperature(
         grids[0].copy(), dmasks[0].copy(), stamps[0].copy(), 1, rng_states[0].copy(),
@@ -83,8 +81,7 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
 
     state = dict(
         grids=grids, dmasks=dmasks, stamps=stamps, gens=gens,
-        digit_bufs=digit_bufs, line_r_bufs=line_r_bufs, line_c_bufs=line_c_bufs,
-        line_val_bufs=line_val_bufs, rng_states=rng_states,
+        digit_bufs=digit_bufs, rng_states=rng_states,
         scores_arr=scores_arr, looks_arr=looks_arr, counts_arr=counts_arr, energies=energies,
         temps=temps, hist=hist, lahc_pos=lahc_pos, cycle_pos=cycle_pos,
         accept_counter=accept_counter, move_counter=move_counter,
@@ -115,9 +112,6 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
     stamps = np.full((R, core.UPPER), -1, dtype=np.int64)
     gens = np.ones(R, dtype=np.int64)
     digit_bufs = np.zeros((R, core.DIGIT_BUF_LEN), dtype=np.int64)
-    line_r_bufs = np.zeros((R, 16), dtype=np.int64)
-    line_c_bufs = np.zeros((R, 16), dtype=np.int64)
-    line_val_bufs = np.zeros((R, 16), dtype=np.int64)
     rng_states = np.empty((R, 2), dtype=np.uint64)
     rng_states[:n_common] = ck.rng_states[:n_common]
     for i in range(n_common, R):
@@ -132,7 +126,8 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
         s, l, c = core.evaluate(dmasks[i], stamps[i], 1, cfg.look_window, cfg.count_lo,
                                  cfg.count_hi, cfg.want_count, tmp_buf)
         scores_arr[i], looks_arr[i], counts_arr[i] = s, l, c
-        energies[i] = core.energy_of(s, l, c, 0.0, cfg.w_score, cfg.w_look, cfg.w_count, cfg.w_heur)
+        energies[i] = core.energy_of(s, l, c, 0.0, 0.0, cfg.w_score, cfg.w_look, cfg.w_count,
+                                      cfg.w_heur, cfg.w_triple)
 
     temps = np.empty(R, dtype=np.float64)
     temps[:n_common] = ck.temps[:n_common]
@@ -166,8 +161,7 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
 
     return dict(
         grids=grids, dmasks=dmasks, stamps=stamps, gens=gens,
-        digit_bufs=digit_bufs, line_r_bufs=line_r_bufs, line_c_bufs=line_c_bufs,
-        line_val_bufs=line_val_bufs, rng_states=rng_states,
+        digit_bufs=digit_bufs, rng_states=rng_states,
         scores_arr=scores_arr, looks_arr=looks_arr, counts_arr=counts_arr, energies=energies,
         temps=temps, hist=hist, lahc_pos=lahc_pos, cycle_pos=cycle_pos,
         accept_counter=accept_counter, move_counter=move_counter,
@@ -205,7 +199,8 @@ def _reseed_replica(st: dict, cfg: SAConfig, i: int, from_best: bool, kick_stren
     s, l, c = core.evaluate(st["dmasks"][i], st["stamps"][i], st["gens"][i], cfg.look_window,
                              cfg.count_lo, cfg.count_hi, cfg.want_count, tmp_buf)
     st["scores_arr"][i], st["looks_arr"][i], st["counts_arr"][i] = s, l, c
-    st["energies"][i] = core.energy_of(s, l, c, 0.0, cfg.w_score, cfg.w_look, cfg.w_count, cfg.w_heur)
+    st["energies"][i] = core.energy_of(s, l, c, 0.0, 0.0, cfg.w_score, cfg.w_look, cfg.w_count,
+                                        cfg.w_heur, cfg.w_triple)
     st["hist"][i, :] = st["energies"][i]
     st["lahc_pos"][i] = 0
 
@@ -278,10 +273,10 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
         core.run_block(
             st["grids"], st["dmasks"], st["stamps"], st["gens"], st["energies"],
             st["scores_arr"], st["looks_arr"], st["counts_arr"], st["temps"], st["rng_states"],
-            st["digit_bufs"], st["line_r_bufs"], st["line_c_bufs"], st["line_val_bufs"],
+            st["digit_bufs"],
             st["hist"], st["lahc_pos"], swap_rng,
             edge_pos, move_probs, cfg.p_edge_bias,
-            cfg.w_score, cfg.w_look, cfg.w_count, cfg.w_heur, cfg.want_count,
+            cfg.w_score, cfg.w_look, cfg.w_count, cfg.w_heur, cfg.w_triple, cfg.want_count,
             cfg.look_window, cfg.count_lo, cfg.count_hi,
             accept_mode, iters_per_segment, n_segments, do_swaps,
             st["accept_counter"], st["move_counter"], st["swap_accept"], st["swap_attempt"],

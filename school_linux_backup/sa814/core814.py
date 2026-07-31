@@ -52,11 +52,16 @@ DELTAS = np.array(
     dtype=np.int64,
 )
 
+# The 4 undirected axis directions a straight-line run can follow (horizontal,
+# vertical, and both diagonals). Only one direction per axis is listed since a
+# run along +d is the same run along -d.
+AXES = np.array([(0, 1), (1, 0), (1, 1), (1, -1)], dtype=np.int64)
+
 # Move ids, must match config814.MOVE_NAMES order.
 MOVE_SET_RANDOM = 0
 MOVE_COPY_NEIGHBOR = 1
 MOVE_SWAP_ADJACENT = 2
-MOVE_LINE_SHIFT = 3
+MOVE_AVOID_REPEAT = 3
 MOVE_REMAP_PAIR = 4
 MOVE_REMAP_FULL = 5
 N_MOVES = 6
@@ -379,6 +384,37 @@ def heur_chain_variance(grid):
     return float(chain_bonus) - 1.5 * float(variance_penalty)
 
 
+@njit(cache=True)
+def count_triple_chains(grid):
+    """Counts overlapping windows of 3 consecutive identical digits along the
+    4 undirected axis directions (AXES) -- horizontal, vertical, and both
+    diagonals, each counted once (not once per direction, since a run along
+    +d is the same run along -d).
+
+    Since a walk may revisit cells, only TWO same-digit cells next to each
+    other are ever needed to form an arbitrarily long run of that digit (the
+    walk just bounces between them) -- a THIRD one in a straight line adds
+    nothing to formability and is pure waste of a cell that could carry a
+    more useful digit for some other number. This counts that waste: a run
+    of length L >= 3 contributes (L - 2) overlapping triples, so longer
+    redundant runs are penalized more than a bare 3-in-a-row.
+    """
+    total = 0
+    for a in range(4):
+        dr = AXES[a, 0]
+        dc = AXES[a, 1]
+        for r in range(ROWS):
+            for c in range(COLS):
+                r1 = r + dr
+                c1 = c + dc
+                r2 = r + 2 * dr
+                c2 = c + 2 * dc
+                if 0 <= r1 < ROWS and 0 <= c1 < COLS and 0 <= r2 < ROWS and 0 <= c2 < COLS:
+                    if grid[r, c] == grid[r1, c1] and grid[r1, c1] == grid[r2, c2]:
+                        total += 1
+    return total
+
+
 # ===========================================================================
 # 4. RNG: xorshift128+ (per-replica state, checkpointable)
 # ===========================================================================
@@ -446,30 +482,77 @@ def _pick_edge_biased(state, edge_positions, p_edge):
 
 
 @njit(cache=True, inline="always")
-def get_line(r, c, dr, dc, out_r, out_c):
-    cr, cc = r, c
-    while 0 <= cr - dr < ROWS and 0 <= cc - dc < COLS:
-        cr -= dr
-        cc -= dc
+def apply_avoid_repeat(state, grid, dmask, edge_positions, p_edge,
+                       nbr_val_buf, flag_buf, allowed_buf, params):
+    """Targets a random cell (edge-biased like the other single-cell moves)
+    and looks at its valid 8-directional neighbors (3 at a corner, 5 on an
+    edge, 8 in the interior -- always at least 3).
+
+    If those neighbor values are already all pairwise distinct (no repeated
+    digit among them to break up), there's nothing useful to force, so this
+    falls back to simply copying a uniformly random neighbor's value (like
+    MOVE_COPY_NEIGHBOR).
+
+    Otherwise, a random subset of size k in [1, n_neighbors] of the neighbor
+    values is sampled without replacement, and the new value is forced to be
+    none of them -- deliberately breaking up same-digit runs among the
+    neighbors. This directly targets what feeds count_triple_chains: since a
+    walk may revisit cells, only two same-digit cells are ever needed to form
+    an arbitrarily long run of that digit, so a third one in a straight line
+    is pure waste.
+
+    Undo is identical to MOVE_SET_RANDOM/MOVE_COPY_NEIGHBOR (single-cell
+    revert via params), so this needs no dedicated undo function.
+    """
+    tr, tc = _pick_edge_biased(state, edge_positions, p_edge)
+
     n = 0
-    while 0 <= cr < ROWS and 0 <= cc < COLS:
-        out_r[n] = cr
-        out_c[n] = cc
-        n += 1
-        cr += dr
-        cc += dc
-    return n
+    for di in range(8):
+        nr = tr + DELTAS[di, 0]
+        nc = tc + DELTAS[di, 1]
+        if 0 <= nr < ROWS and 0 <= nc < COLS:
+            nbr_val_buf[n] = grid[nr, nc]
+            n += 1
 
+    old_v = grid[tr, tc]
 
-@njit(cache=True, inline="always")
-def apply_line_rotate(grid, dmask, out_r, out_c, length, shift, values_buf):
-    if length <= 1 or shift == 0:
-        return
-    for k in range(length):
-        values_buf[k] = grid[out_r[k], out_c[k]]
-    for k in range(length):
-        src = (k - shift) % length
-        set_cell(grid, dmask, out_r[k], out_c[k], values_buf[src])
+    for d in range(10):
+        flag_buf[d] = 0
+    all_distinct = True
+    for t in range(n):
+        v = nbr_val_buf[t]
+        if flag_buf[v] == 1:
+            all_distinct = False
+        flag_buf[v] = 1
+
+    if all_distinct:
+        new_v = nbr_val_buf[rng_next_bounded(state, n)]
+    else:
+        k = 1 + rng_next_bounded(state, n)
+        # Partial Fisher-Yates shuffle of nbr_val_buf[0..n-1]; the first k
+        # slots afterward are a uniformly random size-k subset without
+        # replacement.
+        for t in range(n - 1, 0, -1):
+            j = rng_next_bounded(state, t + 1)
+            tmp = nbr_val_buf[t]
+            nbr_val_buf[t] = nbr_val_buf[j]
+            nbr_val_buf[j] = tmp
+        for d in range(10):
+            flag_buf[d] = 0
+        for t in range(k):
+            flag_buf[nbr_val_buf[t]] = 1
+        allowed_count = 0
+        for d in range(10):
+            if flag_buf[d] == 0:
+                allowed_buf[allowed_count] = d
+                allowed_count += 1
+        # allowed_count >= 10 - n >= 2 always, since n <= 8.
+        new_v = allowed_buf[rng_next_bounded(state, allowed_count)]
+
+    set_cell(grid, dmask, tr, tc, new_v)
+    params[0] = tr
+    params[1] = tc
+    params[2] = old_v
 
 
 @njit(cache=True, inline="always")
@@ -527,15 +610,17 @@ def invert_perm(perm, inv_out):
 
 @njit(cache=True)
 def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
-               line_r_buf, line_c_buf, line_val_buf, params,
+               nbr_val_buf, flag_buf, allowed_buf, params,
                perm_buf, dmask_scratch):
     """Applies one random move in-place. Fills `params` (int64[5]) with enough
     information for undo_move to reverse it exactly, and returns the move id.
-    perm_buf (int64[10]) and dmask_scratch (int64[10, ROWS]) are scratch space
-    used only by MOVE_REMAP_FULL; perm_buf also doubles as the undo record for
-    that move (must survive unmodified until undo_move is called, which it
-    does since undo always happens before the next apply_move on this
-    replica)."""
+
+    nbr_val_buf (int64[8]), flag_buf (int64[10]), allowed_buf (int64[10]) are
+    scratch space used only by MOVE_AVOID_REPEAT. perm_buf (int64[10]) and
+    dmask_scratch (int64[10, ROWS]) are scratch space used only by
+    MOVE_REMAP_FULL; perm_buf also doubles as the undo record for that move
+    (must survive unmodified until undo_move is called, which it does since
+    undo always happens before the next apply_move on this replica)."""
     r = rng_next_double(state)
     cum = 0.0
     chosen = move_probs.shape[0] - 1
@@ -596,23 +681,10 @@ def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
             params[3] = tc
         return MOVE_SWAP_ADJACENT
 
-    if chosen == MOVE_LINE_SHIFT:
-        r0 = rng_next_bounded(state, ROWS)
-        c0 = rng_next_bounded(state, COLS)
-        di = rng_next_bounded(state, 8)
-        dr = DELTAS[di, 0]
-        dc = DELTAS[di, 1]
-        length = get_line(r0, c0, dr, dc, line_r_buf, line_c_buf)
-        shift = 0
-        if length > 1:
-            shift = 1 + rng_next_bounded(state, length - 1)
-            apply_line_rotate(grid, dmask, line_r_buf, line_c_buf, length, shift, line_val_buf)
-        params[0] = r0
-        params[1] = c0
-        params[2] = dr
-        params[3] = dc
-        params[4] = shift
-        return MOVE_LINE_SHIFT
+    if chosen == MOVE_AVOID_REPEAT:
+        apply_avoid_repeat(state, grid, dmask, edge_positions, p_edge,
+                           nbr_val_buf, flag_buf, allowed_buf, params)
+        return MOVE_AVOID_REPEAT
 
     if chosen == MOVE_REMAP_PAIR:
         a = rng_next_bounded(state, 10)
@@ -637,9 +709,8 @@ def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
 
 
 @njit(cache=True)
-def undo_move(move_id, params, grid, dmask, line_r_buf, line_c_buf, line_val_buf,
-              perm_buf, inv_buf, dmask_scratch):
-    if move_id == MOVE_SET_RANDOM or move_id == MOVE_COPY_NEIGHBOR:
+def undo_move(move_id, params, grid, dmask, perm_buf, inv_buf, dmask_scratch):
+    if move_id == MOVE_SET_RANDOM or move_id == MOVE_COPY_NEIGHBOR or move_id == MOVE_AVOID_REPEAT:
         set_cell(grid, dmask, params[0], params[1], params[2])
     elif move_id == MOVE_SWAP_ADJACENT:
         r1, c1, r2, c2 = params[0], params[1], params[2], params[3]
@@ -648,12 +719,6 @@ def undo_move(move_id, params, grid, dmask, line_r_buf, line_c_buf, line_val_buf
             v2 = grid[r2, c2]
             set_cell(grid, dmask, r1, c1, v2)
             set_cell(grid, dmask, r2, c2, v1)
-    elif move_id == MOVE_LINE_SHIFT:
-        r0, c0, dr, dc, shift = params[0], params[1], params[2], params[3], params[4]
-        if shift != 0:
-            length = get_line(r0, c0, dr, dc, line_r_buf, line_c_buf)
-            inv_shift = (length - (shift % length)) % length
-            apply_line_rotate(grid, dmask, line_r_buf, line_c_buf, length, inv_shift, line_val_buf)
     elif move_id == MOVE_REMAP_PAIR:  # self-inverse
         apply_remap_pair(grid, dmask, params[0], params[1])
     else:  # MOVE_REMAP_FULL: undo with the inverse permutation
@@ -699,8 +764,9 @@ def build_edge_positions():
 # ===========================================================================
 
 @njit(cache=True, inline="always")
-def energy_of(score, look, count, heur, w_score, w_look, w_count, w_heur):
-    return -(w_score * score + w_look * look + w_count * count + w_heur * heur)
+def energy_of(score, look, count, heur, triples, w_score, w_look, w_count, w_heur, w_triple):
+    return -(w_score * score + w_look * look + w_count * count + w_heur * heur
+             - w_triple * triples)
 
 
 # ===========================================================================
@@ -709,19 +775,17 @@ def energy_of(score, look, count, heur, w_score, w_look, w_count, w_heur):
 
 @njit(cache=True, nogil=True)
 def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, counts_arr,
-                 temps, rng_states, digit_bufs, line_r_bufs, line_c_bufs, line_val_bufs,
+                 temps, rng_states, digit_bufs,
                  hist, lahc_pos,
                  edge_positions, move_probs, p_edge,
-                 w_score, w_look, w_count, w_heur, want_count, look_window, count_lo, count_hi,
+                 w_score, w_look, w_count, w_heur, w_triple,
+                 want_count, look_window, count_lo, count_hi,
                  accept_mode, iters, accept_counter, move_counter):
     grid = grids[i]
     dmask = dmasks[i]
     stamp = stamps[i]
     rng_state = rng_states[i]
     digit_buf = digit_bufs[i]
-    line_r_buf = line_r_bufs[i]
-    line_c_buf = line_c_bufs[i]
-    line_val_buf = line_val_bufs[i]
     my_hist = hist[i]
     lahc_len = my_hist.shape[0]
 
@@ -734,11 +798,14 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
     perm_buf = np.zeros(10, dtype=np.int64)
     inv_buf = np.zeros(10, dtype=np.int64)
     dmask_scratch = np.zeros((10, ROWS), dtype=np.int64)
+    nbr_val_buf = np.zeros(8, dtype=np.int64)
+    flag_buf = np.zeros(10, dtype=np.int64)
+    allowed_buf = np.zeros(10, dtype=np.int64)
 
     for _ in range(iters):
         gen += 1
         move_id = apply_move(rng_state, grid, dmask, edge_positions, move_probs, p_edge,
-                              line_r_buf, line_c_buf, line_val_buf, params,
+                              nbr_val_buf, flag_buf, allowed_buf, params,
                               perm_buf, dmask_scratch)
 
         score, look, count = evaluate(dmask, stamp, gen, look_window, count_lo, count_hi,
@@ -746,7 +813,10 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
         heur = 0.0
         if w_heur != 0.0:
             heur = heur_chain_variance(grid)
-        newE = energy_of(score, look, count, heur, w_score, w_look, w_count, w_heur)
+        triples = 0.0
+        if w_triple != 0.0:
+            triples = float(count_triple_chains(grid))
+        newE = energy_of(score, look, count, heur, triples, w_score, w_look, w_count, w_heur, w_triple)
 
         accept = False
         if accept_mode == ACCEPT_SA:
@@ -786,8 +856,7 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
             counts_arr[i] = count
             accept_counter[i] += 1
         else:
-            undo_move(move_id, params, grid, dmask, line_r_buf, line_c_buf, line_val_buf,
-                      perm_buf, inv_buf, dmask_scratch)
+            undo_move(move_id, params, grid, dmask, perm_buf, inv_buf, dmask_scratch)
 
         move_counter[i, move_id] += 1
 
@@ -830,10 +899,11 @@ def _attempt_swaps(grids, dmasks, energies, scores_arr, looks_arr, counts_arr,
 
 @njit(cache=True, parallel=True, nogil=True)
 def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, counts_arr,
-              temps, rng_states, digit_bufs, line_r_bufs, line_c_bufs, line_val_bufs,
+              temps, rng_states, digit_bufs,
               hist, lahc_pos, swap_rng_state,
               edge_positions, move_probs, p_edge,
-              w_score, w_look, w_count, w_heur, want_count, look_window, count_lo, count_hi,
+              w_score, w_look, w_count, w_heur, w_triple,
+              want_count, look_window, count_lo, count_hi,
               accept_mode, iters_per_segment, n_segments, do_swaps,
               accept_counter, move_counter, swap_accept_counter, swap_attempt_counter):
     """Runs n_segments * iters_per_segment SA iterations per replica, attempting
@@ -842,10 +912,11 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
     for _seg in range(n_segments):
         for i in prange(R):
             _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, counts_arr,
-                        temps, rng_states, digit_bufs, line_r_bufs, line_c_bufs, line_val_bufs,
+                        temps, rng_states, digit_bufs,
                         hist, lahc_pos,
                         edge_positions, move_probs, p_edge,
-                        w_score, w_look, w_count, w_heur, want_count, look_window, count_lo, count_hi,
+                        w_score, w_look, w_count, w_heur, w_triple,
+                        want_count, look_window, count_lo, count_hi,
                         accept_mode, iters_per_segment, accept_counter, move_counter)
         if do_swaps and R > 1:
             _attempt_swaps(grids, dmasks, energies, scores_arr, looks_arr, counts_arr,
@@ -859,28 +930,33 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
 
 @njit(cache=True)
 def _calibrate_samples(grid, dmask, stamp, gen0, rng_state, edge_positions, move_probs, p_edge,
-                        w_score, w_look, w_count, w_heur, want_count, look_window, count_lo, count_hi,
-                        n_samples, digit_buf, line_r_buf, line_c_buf, line_val_buf, samples_out):
+                        w_score, w_look, w_count, w_heur, w_triple,
+                        want_count, look_window, count_lo, count_hi,
+                        n_samples, digit_buf, samples_out):
     gen = gen0
     score, look, count = evaluate(dmask, stamp, gen, look_window, count_lo, count_hi, want_count, digit_buf)
     heur = heur_chain_variance(grid) if w_heur != 0.0 else 0.0
-    curE = energy_of(score, look, count, heur, w_score, w_look, w_count, w_heur)
+    triples = float(count_triple_chains(grid)) if w_triple != 0.0 else 0.0
+    curE = energy_of(score, look, count, heur, triples, w_score, w_look, w_count, w_heur, w_triple)
     params = np.zeros(5, dtype=np.int64)
     perm_buf = np.zeros(10, dtype=np.int64)
     inv_buf = np.zeros(10, dtype=np.int64)
     dmask_scratch = np.zeros((10, ROWS), dtype=np.int64)
+    nbr_val_buf = np.zeros(8, dtype=np.int64)
+    flag_buf = np.zeros(10, dtype=np.int64)
+    allowed_buf = np.zeros(10, dtype=np.int64)
     for k in range(n_samples):
         gen += 1
         move_id = apply_move(rng_state, grid, dmask, edge_positions, move_probs, p_edge,
-                              line_r_buf, line_c_buf, line_val_buf, params,
+                              nbr_val_buf, flag_buf, allowed_buf, params,
                               perm_buf, dmask_scratch)
         score, look, count = evaluate(dmask, stamp, gen, look_window, count_lo, count_hi,
                                        want_count, digit_buf)
         heur = heur_chain_variance(grid) if w_heur != 0.0 else 0.0
-        newE = energy_of(score, look, count, heur, w_score, w_look, w_count, w_heur)
+        triples = float(count_triple_chains(grid)) if w_triple != 0.0 else 0.0
+        newE = energy_of(score, look, count, heur, triples, w_score, w_look, w_count, w_heur, w_triple)
         samples_out[k] = newE - curE
-        undo_move(move_id, params, grid, dmask, line_r_buf, line_c_buf, line_val_buf,
-                  perm_buf, inv_buf, dmask_scratch)
+        undo_move(move_id, params, grid, dmask, perm_buf, inv_buf, dmask_scratch)
     return gen
 
 
@@ -902,15 +978,12 @@ def calibrate_temperature(grid, dmask, stamp, gen0, rng_state, edge_positions, m
     suppressed (exp(-dE/T) ~ 0) even while ordinary moves are freely explored.
     """
     digit_buf = np.zeros(DIGIT_BUF_LEN, dtype=np.int64)
-    line_r_buf = np.zeros(16, dtype=np.int64)
-    line_c_buf = np.zeros(16, dtype=np.int64)
-    line_val_buf = np.zeros(16, dtype=np.int64)
     samples = np.zeros(n_samples, dtype=np.float64)
 
     _calibrate_samples(grid, dmask, stamp, gen0, rng_state, edge_positions, move_probs, p_edge,
-                        cfg.w_score, cfg.w_look, cfg.w_count, cfg.w_heur, cfg.want_count,
-                        cfg.look_window, cfg.count_lo, cfg.count_hi,
-                        n_samples, digit_buf, line_r_buf, line_c_buf, line_val_buf, samples)
+                        cfg.w_score, cfg.w_look, cfg.w_count, cfg.w_heur, cfg.w_triple,
+                        cfg.want_count, cfg.look_window, cfg.count_lo, cfg.count_hi,
+                        n_samples, digit_buf, samples)
 
     up = samples[samples > 0.0]
     if up.size == 0:
