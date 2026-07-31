@@ -83,9 +83,6 @@ def _make_replica_state(R, seed_grids):
     stamps = np.full((R, core.UPPER), -1, dtype=np.int64)
     gens = np.ones(R, dtype=np.int64)
     digit_bufs = np.zeros((R, core.DIGIT_BUF_LEN), dtype=np.int64)
-    line_r_bufs = np.zeros((R, 16), dtype=np.int64)
-    line_c_bufs = np.zeros((R, 16), dtype=np.int64)
-    line_val_bufs = np.zeros((R, 16), dtype=np.int64)
     rng_states = np.stack([core.make_rng_state(1000 + i) for i in range(R)])
     scores_arr = np.zeros(R, dtype=np.int64)
     looks_arr = np.zeros(R, dtype=np.int64)
@@ -95,7 +92,7 @@ def _make_replica_state(R, seed_grids):
     for i in range(R):
         s, l, c = core.evaluate(dmasks[i], stamps[i], 1, 400, 1000, 10000, False, buf0)
         scores_arr[i], looks_arr[i], counts_arr[i] = s, l, c
-        energies[i] = core.energy_of(s, l, c, 0.0, 1.0, 0.002, 0.0, 0.0)
+        energies[i] = core.energy_of(s, l, c, 0.0, 0.0, 1.0, 0.002, 0.0, 0.0, 0.0)
     temps = np.full(R, 1.0)
     lahc_len = 32
     hist = np.zeros((R, lahc_len), dtype=np.float64)
@@ -106,7 +103,6 @@ def _make_replica_state(R, seed_grids):
     swap_accept = np.zeros(max(R - 1, 0), dtype=np.int64)
     swap_attempt = np.zeros(max(R - 1, 0), dtype=np.int64)
     return dict(grids=grids, dmasks=dmasks, stamps=stamps, gens=gens, digit_bufs=digit_bufs,
-                line_r_bufs=line_r_bufs, line_c_bufs=line_c_bufs, line_val_bufs=line_val_bufs,
                 rng_states=rng_states, scores_arr=scores_arr, looks_arr=looks_arr,
                 counts_arr=counts_arr, energies=energies, temps=temps, hist=hist,
                 lahc_pos=lahc_pos, accept_counter=accept_counter, move_counter=move_counter,
@@ -120,7 +116,7 @@ def bench_sa_scaling(seconds: float):
         seed_grids = [np.random.default_rng(0).integers(0, 10, (8, 14)).astype(np.uint8)]
 
     edge_pos = core.build_edge_positions()
-    move_probs = np.array([0.44, 0.235, 0.235, 0.03, 0.01, 0.05])
+    move_probs = np.array([0.40, 0.22, 0.22, 0.10, 0.01, 0.05])
     swap_rng = core.make_rng_state(1)
 
     max_threads = numba.config.NUMBA_NUM_THREADS
@@ -131,10 +127,10 @@ def bench_sa_scaling(seconds: float):
         # warm-up / JIT compile
         core.run_block(st["grids"], st["dmasks"], st["stamps"], st["gens"], st["energies"],
                         st["scores_arr"], st["looks_arr"], st["counts_arr"], st["temps"], st["rng_states"],
-                        st["digit_bufs"], st["line_r_bufs"], st["line_c_bufs"], st["line_val_bufs"],
+                        st["digit_bufs"],
                         st["hist"], st["lahc_pos"], swap_rng,
                         edge_pos, move_probs, 0.5,
-                        1.0, 0.002, 0.0, 0.0, False, 400, 1000, 10000,
+                        1.0, 0.002, 0.0, 0.0, 0.0, False, 400, 1000, 10000,
                         core.ACCEPT_SA, 500, 2, True,
                         st["accept_counter"], st["move_counter"], st["swap_accept"], st["swap_attempt"])
 
@@ -146,10 +142,10 @@ def bench_sa_scaling(seconds: float):
         while time.perf_counter() - t0 < seconds:
             core.run_block(st["grids"], st["dmasks"], st["stamps"], st["gens"], st["energies"],
                             st["scores_arr"], st["looks_arr"], st["counts_arr"], st["temps"], st["rng_states"],
-                            st["digit_bufs"], st["line_r_bufs"], st["line_c_bufs"], st["line_val_bufs"],
+                            st["digit_bufs"],
                             st["hist"], st["lahc_pos"], swap_rng,
                             edge_pos, move_probs, 0.5,
-                            1.0, 0.002, 0.0, 0.0, False, 400, 1000, 10000,
+                            1.0, 0.002, 0.0, 0.0, 0.0, False, 400, 1000, 10000,
                             core.ACCEPT_SA, iters_per_segment, 5, True,
                             st["accept_counter"], st["move_counter"], st["swap_accept"], st["swap_attempt"])
             done += R * iters_per_segment * 5

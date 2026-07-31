@@ -36,10 +36,10 @@ Each iteration picks one move at random (`config814.SAConfig`'s `p_*` fields,
 
 | move | default weight | what changes |
 |---|---|---|
-| `set_random` | 44% | one cell (edge-biased 50% of the time) becomes a different random digit |
-| `copy_neighbor` | 23.5% | one cell copies the value of one of its 8 neighbors |
-| `swap_adjacent` | 23.5% | one cell and one of its 8 neighbors swap values |
-| `line_shift` | 3% | one full 8-directional line (up to 14 cells) rotates by a random amount |
+| `set_random` | 40% | one cell (edge-biased 50% of the time) becomes a different random digit |
+| `copy_neighbor` | 22% | one cell copies the value of one of its 8 neighbors |
+| `swap_adjacent` | 22% | one cell and one of its 8 neighbors swap values |
+| `avoid_repeat` | 10% | one cell is forced away from a random subset of its neighbor values (or copies a neighbor, if they're already all distinct) |
 | `remap_pair` | 1% | two digits (e.g. 3 and 7) swap everywhere in the grid |
 | `remap_full` | 5% | **all 10 digits get relabeled at once via a random permutation** (e.g. `0123456789 -> 2938475610`), not just a pairwise swap |
 
@@ -53,6 +53,35 @@ SA reach that kind of relabeling jump stochastically during the search itself,
 rather than only via a separate exhaustive post-processing pass. It's
 reversible in one step (undo applies the inverse permutation) so it costs
 nothing extra to try and reject.
+
+`avoid_repeat` replaced an earlier `line_shift` move (whole-line rotation,
+removed). It targets a random cell, looks at its valid 8-directional
+neighbors (3 at a corner, 5 on an edge, 8 in the interior), and: if those
+neighbor values are already all pairwise distinct, it just copies a random
+one (nothing useful to force); otherwise it samples a random subset of 1..n
+of them and forces the new value to avoid every value in that subset. This
+directly targets the waste that `w_triple` (below) penalizes — deliberately
+breaking up same-digit runs among a cell's neighbors before they turn into a
+3-in-a-row.
+
+## Triple-chain penalty (`w_triple`)
+
+Since a walk may revisit cells, only **two** adjacent same-digit cells are
+ever needed to form an arbitrarily long run of that digit (the walk just
+bounces between them to spell `11`, `111`, `1111`, ... as needed). A
+**third** cell continuing that same straight line adds nothing to
+formability — it's a wasted cell that could have carried a more useful digit
+for some other number.
+
+`core814.count_triple_chains(grid)` counts every overlapping window of 3
+consecutive identical digits along the 4 undirected axis directions
+(horizontal, vertical, both diagonals — each axis counted once). A run of
+length L >= 3 contributes `L - 2` overlapping triples, so longer redundant
+runs are penalized more. The energy function subtracts
+`w_triple * triple_count` (default `w_triple = 0.001`, small enough that even
+a heavily-degenerate grid's worth of triples can never outweigh a single real
+score point) — see `core814.energy_of`. `avoid_repeat` is the move most
+directly aimed at reducing this count during the search.
 
 ## Layout
 

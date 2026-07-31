@@ -39,7 +39,7 @@ GRID_SIZE = GRID_ROWS * GRID_COLS
 MAX_SCORE = 8142
 
 # Move operator names, in the fixed order used by core814's move dispatcher.
-MOVE_NAMES = ("set_random", "copy_neighbor", "swap_adjacent", "line_shift", "remap_pair", "remap_full")
+MOVE_NAMES = ("set_random", "copy_neighbor", "swap_adjacent", "avoid_repeat", "remap_pair", "remap_full")
 
 # Acceptance-rule / search-mode choices exposed on the CLI.
 ACCEPT_MODES = ("sa", "lahc", "dlas")
@@ -76,16 +76,26 @@ class SAConfig:
     w_look: float = 0.0020
     w_count: float = 0.0
     w_heur: float = 0.0
+    w_triple: float = 0.001     # penalty per overlapping 3-in-a-row same-digit window
+                                # (see core814.count_triple_chains) -- since a walk may
+                                # revisit cells, only 2 same-digit cells are ever needed
+                                # to form any length of repeated-digit number, so a 3rd
+                                # in a straight line is pure waste. Kept small enough that
+                                # even a heavily-degenerate grid's worth of triples can
+                                # never outweigh a single real score point.
     want_count: bool = False     # whether to compute the [count_lo, count_hi) formable count
     look_window: int = 400       # how far past the first failure to keep scanning
     count_lo: int = 1000
     count_hi: int = 10000
 
     # --- move operator mix (must sum to ~1.0; core814 normalizes defensively) ---
-    p_set_random: float = 0.44
-    p_copy_neighbor: float = 0.235
-    p_swap_adjacent: float = 0.235
-    p_line_shift: float = 0.03
+    p_set_random: float = 0.40
+    p_copy_neighbor: float = 0.22
+    p_swap_adjacent: float = 0.22
+    p_avoid_repeat: float = 0.10  # force a cell away from a random subset of its neighbor
+                                  # values (or copy a neighbor if they're already all
+                                  # distinct) -- see core814.apply_avoid_repeat. Directly
+                                  # targets the same waste that w_triple penalizes.
     p_remap_pair: float = 0.01   # swap 2 digits everywhere in the grid
     p_remap_full: float = 0.05  # relabel all 10 digits at once via a random permutation
                                  # (e.g. 0123456789 -> 2938475610) -- see core814.apply_remap_full
@@ -117,7 +127,7 @@ class SAConfig:
             self.p_set_random,
             self.p_copy_neighbor,
             self.p_swap_adjacent,
-            self.p_line_shift,
+            self.p_avoid_repeat,
             self.p_remap_pair,
             self.p_remap_full,
         )
@@ -126,9 +136,9 @@ class SAConfig:
         """Stable hash of the fields that affect run semantics (not run_name/resume/etc)."""
         semantic_fields = [
             "accept_mode", "search_mode", "lahc_len",
-            "w_score", "w_look", "w_count", "w_heur", "want_count",
+            "w_score", "w_look", "w_count", "w_heur", "w_triple", "want_count",
             "look_window", "count_lo", "count_hi",
-            "p_set_random", "p_copy_neighbor", "p_swap_adjacent", "p_line_shift", "p_remap_pair",
+            "p_set_random", "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap_pair",
             "p_remap_full", "p_edge_bias", "replicas",
         ]
         d = asdict(self)
@@ -227,6 +237,7 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
     p.add_argument("--w-look", type=float, default=None)
     p.add_argument("--w-count", type=float, default=None)
     p.add_argument("--w-heur", type=float, default=None)
+    p.add_argument("--w-triple", type=float, default=None)
     p.add_argument("--look-window", type=int, default=None)
 
     p.add_argument("--checkpoint-secs", type=float, default=None)
