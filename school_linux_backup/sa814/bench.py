@@ -102,7 +102,7 @@ def _make_replica_state(R, seed_grids):
     hist[:] = energies[:, None]
     lahc_pos = np.zeros(R, dtype=np.int64)
     accept_counter = np.zeros(R, dtype=np.int64)
-    move_counter = np.zeros((R, 5), dtype=np.int64)
+    move_counter = np.zeros((R, core.N_MOVES), dtype=np.int64)
     swap_accept = np.zeros(max(R - 1, 0), dtype=np.int64)
     swap_attempt = np.zeros(max(R - 1, 0), dtype=np.int64)
     return dict(grids=grids, dmasks=dmasks, stamps=stamps, gens=gens, digit_bufs=digit_bufs,
@@ -120,7 +120,7 @@ def bench_sa_scaling(seconds: float):
         seed_grids = [np.random.default_rng(0).integers(0, 10, (8, 14)).astype(np.uint8)]
 
     edge_pos = core.build_edge_positions()
-    move_probs = np.array([0.45, 0.25, 0.25, 0.04, 0.01])
+    move_probs = np.array([0.44, 0.235, 0.235, 0.03, 0.01, 0.05])
     swap_rng = core.make_rng_state(1)
 
     max_threads = numba.config.NUMBA_NUM_THREADS

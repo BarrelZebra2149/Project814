@@ -39,7 +39,7 @@ GRID_SIZE = GRID_ROWS * GRID_COLS
 MAX_SCORE = 8142
 
 # Move operator names, in the fixed order used by core814's move dispatcher.
-MOVE_NAMES = ("set_random", "copy_neighbor", "swap_adjacent", "line_shift", "remap_pair")
+MOVE_NAMES = ("set_random", "copy_neighbor", "swap_adjacent", "line_shift", "remap_pair", "remap_full")
 
 # Acceptance-rule / search-mode choices exposed on the CLI.
 ACCEPT_MODES = ("sa", "lahc", "dlas")
@@ -82,11 +82,13 @@ class SAConfig:
     count_hi: int = 10000
 
     # --- move operator mix (must sum to ~1.0; core814 normalizes defensively) ---
-    p_set_random: float = 0.45
-    p_copy_neighbor: float = 0.25
-    p_swap_adjacent: float = 0.25
-    p_line_shift: float = 0.04
-    p_remap_pair: float = 0.01
+    p_set_random: float = 0.44
+    p_copy_neighbor: float = 0.235
+    p_swap_adjacent: float = 0.235
+    p_line_shift: float = 0.03
+    p_remap_pair: float = 0.01   # swap 2 digits everywhere in the grid
+    p_remap_full: float = 0.05  # relabel all 10 digits at once via a random permutation
+                                 # (e.g. 0123456789 -> 2938475610) -- see core814.apply_remap_full
     p_edge_bias: float = 0.5     # probability a local move targets a border cell
 
     # --- temperature calibration ---------------------------------------------
@@ -117,6 +119,7 @@ class SAConfig:
             self.p_swap_adjacent,
             self.p_line_shift,
             self.p_remap_pair,
+            self.p_remap_full,
         )
 
     def cfg_hash(self) -> str:
@@ -126,7 +129,7 @@ class SAConfig:
             "w_score", "w_look", "w_count", "w_heur", "want_count",
             "look_window", "count_lo", "count_hi",
             "p_set_random", "p_copy_neighbor", "p_swap_adjacent", "p_line_shift", "p_remap_pair",
-            "p_edge_bias", "replicas",
+            "p_remap_full", "p_edge_bias", "replicas",
         ]
         d = asdict(self)
         payload = json.dumps({k: d[k] for k in semantic_fields}, sort_keys=True)

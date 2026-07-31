@@ -58,6 +58,8 @@ MOVE_COPY_NEIGHBOR = 1
 MOVE_SWAP_ADJACENT = 2
 MOVE_LINE_SHIFT = 3
 MOVE_REMAP_PAIR = 4
+MOVE_REMAP_FULL = 5
+N_MOVES = 6
 
 ACCEPT_SA = 0
 ACCEPT_LAHC = 1
@@ -487,11 +489,53 @@ def apply_remap_pair(grid, dmask, a, b):
         dmask[b, r] = tmp
 
 
+@njit(cache=True, inline="always")
+def apply_remap_full(grid, dmask, perm, dmask_scratch):
+    """Relabels every digit d -> perm[d] across the whole grid: a full 10-digit
+    permutation, not just a pairwise swap. Generalizes apply_remap_pair.
+
+    Ported from the spirit of code/permutation.py, which brute-forces all
+    10! = 3,628,800 relabelings of a FIXED grid to find the best-scoring
+    digit assignment -- proof that a grid's underlying cluster/chain
+    structure can score very differently depending purely on which digit
+    labels which cluster. This move lets SA occasionally take that same kind
+    of jump stochastically (one full reshuffle) instead of only reaching it
+    through many small pairwise swaps (remap_pair).
+
+    perm must be a permutation of 0..9 (perm[d] = new label for old digit d).
+    dmask_scratch is scratch space, same shape as dmask (needed because a
+    general permutation has cycles longer than 2, so naive in-place row
+    reassignment would clobber a row before it's read).
+    """
+    for d in range(10):
+        for r in range(ROWS):
+            dmask_scratch[d, r] = dmask[d, r]
+    for d in range(10):
+        pd = perm[d]
+        for r in range(ROWS):
+            dmask[pd, r] = dmask_scratch[d, r]
+    for r in range(ROWS):
+        for c in range(COLS):
+            grid[r, c] = perm[grid[r, c]]
+
+
+@njit(cache=True, inline="always")
+def invert_perm(perm, inv_out):
+    for d in range(10):
+        inv_out[perm[d]] = d
+
+
 @njit(cache=True)
 def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
-               line_r_buf, line_c_buf, line_val_buf, params):
+               line_r_buf, line_c_buf, line_val_buf, params,
+               perm_buf, dmask_scratch):
     """Applies one random move in-place. Fills `params` (int64[5]) with enough
-    information for undo_move to reverse it exactly, and returns the move id."""
+    information for undo_move to reverse it exactly, and returns the move id.
+    perm_buf (int64[10]) and dmask_scratch (int64[10, ROWS]) are scratch space
+    used only by MOVE_REMAP_FULL; perm_buf also doubles as the undo record for
+    that move (must survive unmodified until undo_move is called, which it
+    does since undo always happens before the next apply_move on this
+    replica)."""
     r = rng_next_double(state)
     cum = 0.0
     chosen = move_probs.shape[0] - 1
@@ -570,19 +614,31 @@ def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
         params[4] = shift
         return MOVE_LINE_SHIFT
 
-    # MOVE_REMAP_PAIR
-    a = rng_next_bounded(state, 10)
-    b = rng_next_bounded(state, 9)
-    if b >= a:
-        b += 1
-    apply_remap_pair(grid, dmask, a, b)
-    params[0] = a
-    params[1] = b
-    return MOVE_REMAP_PAIR
+    if chosen == MOVE_REMAP_PAIR:
+        a = rng_next_bounded(state, 10)
+        b = rng_next_bounded(state, 9)
+        if b >= a:
+            b += 1
+        apply_remap_pair(grid, dmask, a, b)
+        params[0] = a
+        params[1] = b
+        return MOVE_REMAP_PAIR
+
+    # MOVE_REMAP_FULL: uniformly random permutation of all 10 digits (Fisher-Yates)
+    for i in range(10):
+        perm_buf[i] = i
+    for i in range(9, 0, -1):
+        j = rng_next_bounded(state, i + 1)
+        tmp = perm_buf[i]
+        perm_buf[i] = perm_buf[j]
+        perm_buf[j] = tmp
+    apply_remap_full(grid, dmask, perm_buf, dmask_scratch)
+    return MOVE_REMAP_FULL
 
 
 @njit(cache=True)
-def undo_move(move_id, params, grid, dmask, line_r_buf, line_c_buf, line_val_buf):
+def undo_move(move_id, params, grid, dmask, line_r_buf, line_c_buf, line_val_buf,
+              perm_buf, inv_buf, dmask_scratch):
     if move_id == MOVE_SET_RANDOM or move_id == MOVE_COPY_NEIGHBOR:
         set_cell(grid, dmask, params[0], params[1], params[2])
     elif move_id == MOVE_SWAP_ADJACENT:
@@ -598,8 +654,11 @@ def undo_move(move_id, params, grid, dmask, line_r_buf, line_c_buf, line_val_buf
             length = get_line(r0, c0, dr, dc, line_r_buf, line_c_buf)
             inv_shift = (length - (shift % length)) % length
             apply_line_rotate(grid, dmask, line_r_buf, line_c_buf, length, inv_shift, line_val_buf)
-    else:  # MOVE_REMAP_PAIR is self-inverse
+    elif move_id == MOVE_REMAP_PAIR:  # self-inverse
         apply_remap_pair(grid, dmask, params[0], params[1])
+    else:  # MOVE_REMAP_FULL: undo with the inverse permutation
+        invert_perm(perm_buf, inv_buf)
+        apply_remap_full(grid, dmask, inv_buf, dmask_scratch)
 
 
 @njit(cache=True)
@@ -672,11 +731,15 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
     pos = lahc_pos[i]
 
     params = np.zeros(5, dtype=np.int64)
+    perm_buf = np.zeros(10, dtype=np.int64)
+    inv_buf = np.zeros(10, dtype=np.int64)
+    dmask_scratch = np.zeros((10, ROWS), dtype=np.int64)
 
     for _ in range(iters):
         gen += 1
         move_id = apply_move(rng_state, grid, dmask, edge_positions, move_probs, p_edge,
-                              line_r_buf, line_c_buf, line_val_buf, params)
+                              line_r_buf, line_c_buf, line_val_buf, params,
+                              perm_buf, dmask_scratch)
 
         score, look, count = evaluate(dmask, stamp, gen, look_window, count_lo, count_hi,
                                        want_count, digit_buf)
@@ -723,7 +786,8 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
             counts_arr[i] = count
             accept_counter[i] += 1
         else:
-            undo_move(move_id, params, grid, dmask, line_r_buf, line_c_buf, line_val_buf)
+            undo_move(move_id, params, grid, dmask, line_r_buf, line_c_buf, line_val_buf,
+                      perm_buf, inv_buf, dmask_scratch)
 
         move_counter[i, move_id] += 1
 
@@ -802,16 +866,21 @@ def _calibrate_samples(grid, dmask, stamp, gen0, rng_state, edge_positions, move
     heur = heur_chain_variance(grid) if w_heur != 0.0 else 0.0
     curE = energy_of(score, look, count, heur, w_score, w_look, w_count, w_heur)
     params = np.zeros(5, dtype=np.int64)
+    perm_buf = np.zeros(10, dtype=np.int64)
+    inv_buf = np.zeros(10, dtype=np.int64)
+    dmask_scratch = np.zeros((10, ROWS), dtype=np.int64)
     for k in range(n_samples):
         gen += 1
         move_id = apply_move(rng_state, grid, dmask, edge_positions, move_probs, p_edge,
-                              line_r_buf, line_c_buf, line_val_buf, params)
+                              line_r_buf, line_c_buf, line_val_buf, params,
+                              perm_buf, dmask_scratch)
         score, look, count = evaluate(dmask, stamp, gen, look_window, count_lo, count_hi,
                                        want_count, digit_buf)
         heur = heur_chain_variance(grid) if w_heur != 0.0 else 0.0
         newE = energy_of(score, look, count, heur, w_score, w_look, w_count, w_heur)
         samples_out[k] = newE - curE
-        undo_move(move_id, params, grid, dmask, line_r_buf, line_c_buf, line_val_buf)
+        undo_move(move_id, params, grid, dmask, line_r_buf, line_c_buf, line_val_buf,
+                  perm_buf, inv_buf, dmask_scratch)
     return gen
 
 

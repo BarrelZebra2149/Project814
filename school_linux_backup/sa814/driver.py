@@ -75,7 +75,7 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
     lahc_pos = np.zeros(R, dtype=np.int64)
     cycle_pos = np.zeros(R, dtype=np.int64)
     accept_counter = np.zeros(R, dtype=np.int64)
-    move_counter = np.zeros((R, 5), dtype=np.int64)
+    move_counter = np.zeros((R, core.N_MOVES), dtype=np.int64)
     swap_accept = np.zeros(max(R - 1, 0), dtype=np.int64)
     swap_attempt = np.zeros(max(R - 1, 0), dtype=np.int64)
 
@@ -152,8 +152,12 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
     cycle_pos[:n_common] = ck.cycle_pos[:n_common]
     accept_counter = np.zeros(R, dtype=np.int64)
     accept_counter[:n_common] = ck.accept_counter[:n_common]
-    move_counter = np.zeros((R, 5), dtype=np.int64)
-    move_counter[:n_common] = ck.move_counter[:n_common]
+    move_counter = np.zeros((R, core.N_MOVES), dtype=np.int64)
+    # A checkpoint saved before a new move type was added may have fewer
+    # columns (e.g. 5, before remap_full) -- carry over whatever overlaps
+    # rather than erroring, since move_counter is just a stat, not real state.
+    old_n_moves = min(ck.move_counter.shape[1], core.N_MOVES)
+    move_counter[:n_common, :old_n_moves] = ck.move_counter[:n_common, :old_n_moves]
     swap_accept = np.zeros(max(R - 1, 0), dtype=np.int64)
     swap_attempt = np.zeros(max(R - 1, 0), dtype=np.int64)
 
