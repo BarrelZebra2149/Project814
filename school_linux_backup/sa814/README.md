@@ -36,12 +36,16 @@ Each iteration picks one move at random (`config814.SAConfig`'s `p_*` fields,
 
 | move | default weight | what changes |
 |---|---|---|
-| `set_random` | 40% | one cell (edge-biased 50% of the time) becomes a different random digit |
-| `copy_neighbor` | 22% | one cell copies the value of one of its 8 neighbors |
-| `swap_adjacent` | 22% | one cell and one of its 8 neighbors swap values |
-| `avoid_repeat` | 10% | one cell is forced away from a random subset of its neighbor values (or copies a neighbor, if they're already all distinct) |
+| `set_random` | 20% | one cell (edge-biased 50% of the time) is set to one of its differing neighbor values, uniformly at random -- falls back to a blind random digit only if every neighbor already matches |
+| `copy_neighbor` | 20% | one cell copies the value of one of its 8 neighbors |
+| `swap_adjacent` | 20% | one cell and one of its 8 neighbors swap values |
+| `avoid_repeat` | 34% | one cell is forced away from a random subset of its neighbor values (or copies a neighbor, if they're already all distinct) |
 | `remap_pair` | 1% | two digits (e.g. 3 and 7) swap everywhere in the grid |
 | `remap_full` | 5% | **all 10 digits get relabeled at once via a random permutation** (e.g. `0123456789 -> 2938475610`), not just a pairwise swap |
+
+(Weights were rebalanced twice after real runs: `avoid_repeat` was raised
+10% -> 20% -> 34%, ultimately swapping shares with `set_random`, since it
+produced dramatically faster score climbs from fresh random seeds.)
 
 `remap_full` generalizes `remap_pair` and is directly inspired by
 `../code/permutation.py`, which brute-forces all `10! = 3,628,800` relabelings
@@ -64,24 +68,43 @@ directly targets the waste that `w_triple` (below) penalizes — deliberately
 breaking up same-digit runs among a cell's neighbors before they turn into a
 3-in-a-row.
 
+`set_random` adopted the same neighbor-awareness: rather than a completely
+blind uniform digit, it samples uniformly among the cell's neighbor values
+that *differ* from its own current value (via reservoir sampling over
+`avoid_repeat`'s same `nbr_val_buf`, no extra buffer needed), falling back to
+a blind digit only when every neighbor already shares the current value. This
+is `copy_neighbor` generalized: instead of one fixed random direction (which
+can land out of bounds and no-op near an edge), it samples over every valid
+differing neighbor.
+
 ## Triple-chain penalty (`w_triple`)
 
 Since a walk may revisit cells, only **two** adjacent same-digit cells are
 ever needed to form an arbitrarily long run of that digit (the walk just
 bounces between them to spell `11`, `111`, `1111`, ... as needed). A
-**third** cell continuing that same straight line adds nothing to
-formability — it's a wasted cell that could have carried a more useful digit
-for some other number.
+**third** cell reachable from those two adds nothing to formability — it's a
+wasted cell that could have carried a more useful digit for some other
+number.
 
-`core814.count_triple_chains(grid)` counts every overlapping window of 3
-consecutive identical digits along the 4 undirected axis directions
-(horizontal, vertical, both diagonals — each axis counted once). A run of
-length L >= 3 contributes `L - 2` overlapping triples, so longer redundant
-runs are penalized more. The energy function subtracts
-`w_triple * triple_count` (default `w_triple = 0.001`, small enough that even
-a heavily-degenerate grid's worth of triples can never outweigh a single real
-score point) — see `core814.energy_of`. `avoid_repeat` is the move most
-directly aimed at reducing this count during the search.
+`core814.count_triple_chains(grid)` counts every 3-cell same-digit chain
+reachable via an 8-directional walk that is free to **bend** at each step
+(start -> mid -> end, each an 8-neighbor of the previous, end != start) --
+not just straight lines. An earlier version only checked 4 fixed axis
+directions and missed bent chains like `(1,1)->(1,2)->(2,1)`, which are
+exactly as wasteful as a straight run; the corrected version catches those
+too (verified against a brute-force Python mirror, 0 mismatches over 500
+grids). For a simple straight run of length L >= 3 with no branching, the
+count still reduces to exactly `L - 2`, matching the original formula;
+branching/blob shapes now correctly count the extra bent triples through
+them as well.
+
+The energy function subtracts `w_triple * triple_count` (default
+`w_triple = 0.005`) — see `core814.energy_of`. Calibrated against a
+realistic worst case of ~200 triples a search might actually wander through
+(not the ~2400 of a fully degenerate all-one-digit grid, which scores near 0
+and is never seriously explored): `200 * 0.005 = 1.0`, so even that can only
+just brush a single real score point, never flip it outright. `avoid_repeat`
+is the move most directly aimed at reducing this count during the search.
 
 ## Layout
 

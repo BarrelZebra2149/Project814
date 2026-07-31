@@ -52,11 +52,6 @@ DELTAS = np.array(
     dtype=np.int64,
 )
 
-# The 4 undirected axis directions a straight-line run can follow (horizontal,
-# vertical, and both diagonals). Only one direction per axis is listed since a
-# run along +d is the same run along -d.
-AXES = np.array([(0, 1), (1, 0), (1, 1), (1, -1)], dtype=np.int64)
-
 # Move ids, must match config814.MOVE_NAMES order.
 MOVE_SET_RANDOM = 0
 MOVE_COPY_NEIGHBOR = 1
@@ -386,33 +381,40 @@ def heur_chain_variance(grid):
 
 @njit(cache=True)
 def count_triple_chains(grid):
-    """Counts overlapping windows of 3 consecutive identical digits along the
-    4 undirected axis directions (AXES) -- horizontal, vertical, and both
-    diagonals, each counted once (not once per direction, since a run along
-    +d is the same run along -d).
-
-    Since a walk may revisit cells, only TWO same-digit cells next to each
-    other are ever needed to form an arbitrarily long run of that digit (the
-    walk just bounces between them) -- a THIRD one in a straight line adds
+    """Counts 3-cell same-digit chains reachable via an 8-directional walk
+    that is free to bend at each step (start -> mid -> end, mid and end each
+    an 8-neighbor of the previous cell, end != start) -- NOT restricted to a
+    straight line. A straight-line-only check (as an earlier version of this
+    function did, checking only 4 fixed axis directions) misses bent chains
+    like (1,1)->(1,2)->(2,1), which are exactly as wasteful as a straight
+    one: since a walk may revisit cells, only TWO adjacent same-digit cells
+    are ever needed to form an arbitrarily long run of that digit (the walk
+    just bounces between them), so a THIRD reachable in any direction adds
     nothing to formability and is pure waste of a cell that could carry a
-    more useful digit for some other number. This counts that waste: a run
-    of length L >= 3 contributes (L - 2) overlapping triples, so longer
-    redundant runs are penalized more than a bare 3-in-a-row.
+    more useful digit for some other number.
+
+    Each undirected triple {start, mid, end} is found from both ends (once
+    as start->mid->end, once as end->mid->start), so the raw count is halved
+    to report the true number of distinct triples. For a simple straight
+    run of length L >= 3 with no extra branching, this reduces to exactly
+    the same (L - 2) as the old straight-line-only count; branching/blob
+    shapes now correctly count additional bent triples through them too.
     """
     total = 0
-    for a in range(4):
-        dr = AXES[a, 0]
-        dc = AXES[a, 1]
-        for r in range(ROWS):
-            for c in range(COLS):
-                r1 = r + dr
-                c1 = c + dc
-                r2 = r + 2 * dr
-                c2 = c + 2 * dc
-                if 0 <= r1 < ROWS and 0 <= c1 < COLS and 0 <= r2 < ROWS and 0 <= c2 < COLS:
-                    if grid[r, c] == grid[r1, c1] and grid[r1, c1] == grid[r2, c2]:
-                        total += 1
-    return total
+    for r in range(ROWS):
+        for c in range(COLS):
+            d = grid[r, c]
+            for di in range(8):
+                r1 = r + DELTAS[di, 0]
+                c1 = c + DELTAS[di, 1]
+                if 0 <= r1 < ROWS and 0 <= c1 < COLS and grid[r1, c1] == d:
+                    for dj in range(8):
+                        r2 = r1 + DELTAS[dj, 0]
+                        c2 = c1 + DELTAS[dj, 1]
+                        if 0 <= r2 < ROWS and 0 <= c2 < COLS and grid[r2, c2] == d:
+                            if r2 != r or c2 != c:
+                                total += 1
+    return total // 2
 
 
 # ===========================================================================
@@ -479,6 +481,59 @@ def _pick_edge_biased(state, edge_positions, p_edge):
         idx = rng_next_bounded(state, edge_positions.shape[0])
         return edge_positions[idx, 0], edge_positions[idx, 1]
     return rng_next_bounded(state, ROWS), rng_next_bounded(state, COLS)
+
+
+@njit(cache=True, inline="always")
+def apply_set_random(state, grid, dmask, edge_positions, p_edge, nbr_val_buf, params):
+    """Adopts avoid_repeat's neighbor-awareness instead of picking a
+    completely blind uniform digit: targets a random cell (edge-biased like
+    the other single-cell moves), gathers its valid 8-directional neighbor
+    values, and sets the cell to one of those neighbor values chosen
+    uniformly at random -- excluding the cell's own current value from
+    consideration, so the move always actually changes something. This is
+    exactly copy_neighbor generalized: instead of always using one fixed
+    random direction (which can land out of bounds and no-op at an edge),
+    it samples uniformly over every valid neighbor that differs from the
+    current value, via reservoir sampling (no extra buffer needed beyond
+    nbr_val_buf, which avoid_repeat already uses).
+
+    Falls back to a blind uniformly-random digit != old_v (the original
+    set_random behavior) only in the degenerate case where every valid
+    neighbor already shares the cell's own current value.
+    """
+    tr, tc = _pick_edge_biased(state, edge_positions, p_edge)
+    old_v = grid[tr, tc]
+
+    n = 0
+    for di in range(8):
+        nr = tr + DELTAS[di, 0]
+        nc = tc + DELTAS[di, 1]
+        if 0 <= nr < ROWS and 0 <= nc < COLS:
+            nbr_val_buf[n] = grid[nr, nc]
+            n += 1
+
+    # Reservoir sample: uniformly pick one neighbor value != old_v, without
+    # needing to materialize a filtered list.
+    count = 0
+    chosen = 0
+    for t in range(n):
+        v = nbr_val_buf[t]
+        if v != old_v:
+            count += 1
+            if rng_next_bounded(state, count) == 0:
+                chosen = v
+
+    if count > 0:
+        new_v = chosen
+    else:
+        new_v = rng_next_bounded(state, 9)
+        if new_v >= old_v:
+            new_v += 1
+
+    set_cell(grid, dmask, tr, tc, new_v)
+    params[0] = tr
+    params[1] = tc
+    params[2] = old_v
 
 
 @njit(cache=True, inline="always")
@@ -631,15 +686,7 @@ def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
             break
 
     if chosen == MOVE_SET_RANDOM:
-        tr, tc = _pick_edge_biased(state, edge_positions, p_edge)
-        old_v = grid[tr, tc]
-        new_v = rng_next_bounded(state, 9)
-        if new_v >= old_v:
-            new_v += 1
-        set_cell(grid, dmask, tr, tc, new_v)
-        params[0] = tr
-        params[1] = tc
-        params[2] = old_v
+        apply_set_random(state, grid, dmask, edge_positions, p_edge, nbr_val_buf, params)
         return MOVE_SET_RANDOM
 
     if chosen == MOVE_COPY_NEIGHBOR:

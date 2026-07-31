@@ -76,20 +76,33 @@ class SAConfig:
     w_look: float = 0.0020
     w_count: float = 0.0
     w_heur: float = 0.0
-    w_triple: float = 0.001     # penalty per overlapping 3-in-a-row same-digit window
-                                # (see core814.count_triple_chains) -- since a walk may
-                                # revisit cells, only 2 same-digit cells are ever needed
-                                # to form any length of repeated-digit number, so a 3rd
-                                # in a straight line is pure waste. Kept small enough that
-                                # even a heavily-degenerate grid's worth of triples can
-                                # never outweigh a single real score point.
+    w_triple: float = 0.005     # penalty per 3-cell same-digit chain reachable via an
+                                # 8-directional walk that may bend at each step (see
+                                # core814.count_triple_chains) -- since a walk may revisit
+                                # cells, only 2 same-digit cells are ever needed to form
+                                # any length of repeated-digit number, so a 3rd anywhere
+                                # reachable is pure waste. Raised 5x from an earlier 0.001
+                                # once the counter was corrected to catch bent (not just
+                                # straight-line) triples, since the count now matters more.
+                                # Calibrated against a realistic worst case of ~200 triples
+                                # a search might actually wander through (not the ~2400 of a
+                                # fully degenerate all-one-digit grid, which scores near 0
+                                # and is never seriously explored) -- 200 * 0.005 = 1.0, so
+                                # even that can only just barely brush a single real score
+                                # point, never flip it outright.
     want_count: bool = False     # whether to compute the [count_lo, count_hi) formable count
     look_window: int = 400       # how far past the first failure to keep scanning
     count_lo: int = 1000
     count_hi: int = 10000
 
     # --- move operator mix (must sum to ~1.0; core814 normalizes defensively) ---
-    p_set_random: float = 0.20   # "blind" random rewrite, no neighbor awareness
+    p_set_random: float = 0.20   # sets a cell to one of its differing neighbor values
+                                 # (uniformly, via reservoir sampling), falling back to a
+                                 # blind random digit only if every neighbor already matches
+                                 # the cell's own value -- see core814.apply_set_random.
+                                 # Adopts avoid_repeat's neighbor-awareness; effectively an
+                                 # upgraded copy_neighbor (samples over ALL differing
+                                 # neighbors, not just one fixed random direction).
     p_copy_neighbor: float = 0.20
     p_swap_adjacent: float = 0.20
     p_avoid_repeat: float = 0.34  # force a cell away from a random subset of its neighbor
