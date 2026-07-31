@@ -89,16 +89,16 @@ class SAConfig:
     count_hi: int = 10000
 
     # --- move operator mix (must sum to ~1.0; core814 normalizes defensively) ---
-    p_set_random: float = 0.34
+    p_set_random: float = 0.20   # "blind" random rewrite, no neighbor awareness
     p_copy_neighbor: float = 0.20
     p_swap_adjacent: float = 0.20
-    p_avoid_repeat: float = 0.20  # force a cell away from a random subset of its neighbor
+    p_avoid_repeat: float = 0.34  # force a cell away from a random subset of its neighbor
                                   # values (or copy a neighbor if they're already all
                                   # distinct) -- see core814.apply_avoid_repeat. Directly
                                   # targets the same waste that w_triple penalizes. Raised
-                                  # from 10% -> 20% after real runs showed much faster
-                                  # score climbs from fresh random seeds once this move and
-                                  # w_triple were introduced together.
+                                  # 10% -> 20% -> 34% (swapped with p_set_random) after real
+                                  # runs showed dramatically faster score climbs from fresh
+                                  # random seeds once this move and w_triple were introduced.
     p_remap_pair: float = 0.01   # swap 2 digits everywhere in the grid
     p_remap_full: float = 0.05  # relabel all 10 digits at once via a random permutation
                                  # (e.g. 0123456789 -> 2938475610) -- see core814.apply_remap_full
