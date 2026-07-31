@@ -49,7 +49,7 @@ class CheckpointState:
     lahc_pos: np.ndarray          # i8 [R]
     cycle_pos: np.ndarray         # i8 [R]  (iterations into the current cooling cycle, anneal mode)
     accept_counter: np.ndarray    # i8 [R]
-    move_counter: np.ndarray      # i8 [R, 5]
+    move_counter: np.ndarray      # i8 [R, N_MOVES] (see core814.N_MOVES)
     swap_accept: np.ndarray       # i8 [R-1]
     swap_attempt: np.ndarray      # i8 [R-1]
     best_grid: np.ndarray         # uint8 [8, 14]

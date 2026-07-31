@@ -29,6 +29,31 @@ This rewrite:
   new record, and on Ctrl-C / SIGTERM / SIGHUP — a killed run resumes from
   where it left off, not from scratch.
 
+## Move set
+
+Each iteration picks one move at random (`config814.SAConfig`'s `p_*` fields,
+`core814.apply_move`):
+
+| move | default weight | what changes |
+|---|---|---|
+| `set_random` | 44% | one cell (edge-biased 50% of the time) becomes a different random digit |
+| `copy_neighbor` | 23.5% | one cell copies the value of one of its 8 neighbors |
+| `swap_adjacent` | 23.5% | one cell and one of its 8 neighbors swap values |
+| `line_shift` | 3% | one full 8-directional line (up to 14 cells) rotates by a random amount |
+| `remap_pair` | 1% | two digits (e.g. 3 and 7) swap everywhere in the grid |
+| `remap_full` | 5% | **all 10 digits get relabeled at once via a random permutation** (e.g. `0123456789 -> 2938475610`), not just a pairwise swap |
+
+`remap_full` generalizes `remap_pair` and is directly inspired by
+`../code/permutation.py`, which brute-forces all `10! = 3,628,800` relabelings
+of one fixed grid to find the best-scoring digit assignment — proof that the
+same underlying cell/cluster structure can score wildly differently purely
+depending on which digit labels which cluster (since formability of a target
+number depends on which physical cells carry *that* digit). `remap_full` lets
+SA reach that kind of relabeling jump stochastically during the search itself,
+rather than only via a separate exhaustive post-processing pass. It's
+reversible in one step (undo applies the inverse permutation) so it costs
+nothing extra to try and reject.
+
 ## Layout
 
 | File | Role |
