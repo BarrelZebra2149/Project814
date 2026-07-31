@@ -32,7 +32,8 @@ def _geometric_ladder(t0: float, t_end: float, n: int) -> np.ndarray:
 
 def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Generator):
     R = cfg.replicas
-    grids = seeding.build_initial_replicas(R, data_dir, cfg.seed_file, run_dir, rng)
+    grids = seeding.build_initial_replicas(R, data_dir, cfg.seed_file, run_dir, rng,
+                                            use_corpus=cfg.seed_from_corpus)
     dmasks = np.zeros((R, 10, core.ROWS), dtype=np.int64)
     for i in range(R):
         core.build_dmask(grids[i], dmasks[i])
@@ -215,6 +216,9 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
     numba.set_num_threads(threads)
     print(f"[sa814] run='{cfg.run_name}' mode={cfg.search_mode} accept={cfg.accept_mode} "
           f"replicas={cfg.replicas} threads={threads} cfg_hash={cfg_hash}")
+    if not cfg.seed_from_corpus:
+        print("[sa814] --no-seed: ignoring data/*.txt and any prior run outputs, "
+              "starting every replica from a fresh random grid")
 
     st = None
     if cfg.resume and not cfg.fresh:
