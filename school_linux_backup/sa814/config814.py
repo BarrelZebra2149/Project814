@@ -39,7 +39,7 @@ GRID_SIZE = GRID_ROWS * GRID_COLS
 MAX_SCORE = 8142
 
 # Move operator names, in the fixed order used by core814's move dispatcher.
-MOVE_NAMES = ("set_random", "copy_neighbor", "swap_adjacent", "avoid_repeat", "remap_pair", "remap_full")
+MOVE_NAMES = ("copy_neighbor", "swap_adjacent", "avoid_repeat", "remap_pair", "remap_full")
 
 # Acceptance-rule / search-mode choices exposed on the CLI.
 ACCEPT_MODES = ("sa", "lahc", "dlas")
@@ -96,22 +96,23 @@ class SAConfig:
     count_hi: int = 10000
 
     # --- move operator mix (must sum to ~1.0; core814 normalizes defensively) ---
-    p_set_random: float = 0.20   # sets a cell to one of its differing neighbor values
-                                 # (uniformly, via reservoir sampling), falling back to a
-                                 # blind random digit only if every neighbor already matches
-                                 # the cell's own value -- see core814.apply_set_random.
-                                 # Adopts avoid_repeat's neighbor-awareness; effectively an
-                                 # upgraded copy_neighbor (samples over ALL differing
-                                 # neighbors, not just one fixed random direction).
-    p_copy_neighbor: float = 0.20
+    p_copy_neighbor: float = 0.40  # sets a cell to one of its differing neighbor values
+                                   # (uniformly, via reservoir sampling), falling back to a
+                                   # blind random digit only if every neighbor already
+                                   # matches the cell's own value -- see
+                                   # core814.apply_copy_neighbor. An earlier separate
+                                   # "set_random" move did the same thing under a different
+                                   # name and was merged in here (0.20 + 0.20 -> 0.40),
+                                   # since it was just this same idea generalized.
     p_swap_adjacent: float = 0.20
     p_avoid_repeat: float = 0.34  # force a cell away from a random subset of its neighbor
                                   # values (or copy a neighbor if they're already all
                                   # distinct) -- see core814.apply_avoid_repeat. Directly
                                   # targets the same waste that w_triple penalizes. Raised
-                                  # 10% -> 20% -> 34% (swapped with p_set_random) after real
-                                  # runs showed dramatically faster score climbs from fresh
-                                  # random seeds once this move and w_triple were introduced.
+                                  # 10% -> 20% -> 34% after real runs showed dramatically
+                                  # faster score climbs from fresh random seeds once this
+                                  # move and w_triple were introduced. The main two levers
+                                  # to tune going forward are this and p_copy_neighbor.
     p_remap_pair: float = 0.01   # swap 2 digits everywhere in the grid
     p_remap_full: float = 0.05  # relabel all 10 digits at once via a random permutation
                                  # (e.g. 0123456789 -> 2938475610) -- see core814.apply_remap_full
@@ -140,7 +141,6 @@ class SAConfig:
 
     def move_probs(self) -> tuple:
         return (
-            self.p_set_random,
             self.p_copy_neighbor,
             self.p_swap_adjacent,
             self.p_avoid_repeat,
@@ -154,7 +154,7 @@ class SAConfig:
             "accept_mode", "search_mode", "lahc_len",
             "w_score", "w_look", "w_count", "w_heur", "w_triple", "want_count",
             "look_window", "count_lo", "count_hi",
-            "p_set_random", "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap_pair",
+            "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap_pair",
             "p_remap_full", "p_edge_bias", "replicas",
         ]
         d = asdict(self)

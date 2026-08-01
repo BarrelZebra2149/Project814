@@ -53,13 +53,12 @@ DELTAS = np.array(
 )
 
 # Move ids, must match config814.MOVE_NAMES order.
-MOVE_SET_RANDOM = 0
-MOVE_COPY_NEIGHBOR = 1
-MOVE_SWAP_ADJACENT = 2
-MOVE_AVOID_REPEAT = 3
-MOVE_REMAP_PAIR = 4
-MOVE_REMAP_FULL = 5
-N_MOVES = 6
+MOVE_COPY_NEIGHBOR = 0
+MOVE_SWAP_ADJACENT = 1
+MOVE_AVOID_REPEAT = 2
+MOVE_REMAP_PAIR = 3
+MOVE_REMAP_FULL = 4
+N_MOVES = 5
 
 ACCEPT_SA = 0
 ACCEPT_LAHC = 1
@@ -484,22 +483,23 @@ def _pick_edge_biased(state, edge_positions, p_edge):
 
 
 @njit(cache=True, inline="always")
-def apply_set_random(state, grid, dmask, edge_positions, p_edge, nbr_val_buf, params):
-    """Adopts avoid_repeat's neighbor-awareness instead of picking a
-    completely blind uniform digit: targets a random cell (edge-biased like
-    the other single-cell moves), gathers its valid 8-directional neighbor
-    values, and sets the cell to one of those neighbor values chosen
-    uniformly at random -- excluding the cell's own current value from
-    consideration, so the move always actually changes something. This is
-    exactly copy_neighbor generalized: instead of always using one fixed
-    random direction (which can land out of bounds and no-op at an edge),
-    it samples uniformly over every valid neighbor that differs from the
-    current value, via reservoir sampling (no extra buffer needed beyond
-    nbr_val_buf, which avoid_repeat already uses).
+def apply_copy_neighbor(state, grid, dmask, edge_positions, p_edge, nbr_val_buf, params):
+    """Targets a random cell (edge-biased like the other single-cell moves),
+    gathers its valid 8-directional neighbor values, and sets the cell to
+    one of those neighbor values chosen uniformly at random -- excluding the
+    cell's own current value from consideration, so the move always
+    actually changes something. This generalizes the original "copy one
+    fixed random direction" idea (which could land out of bounds and no-op
+    near an edge, or copy a neighbor that happened to already match, also a
+    no-op) into a proper uniform sample over every valid *differing*
+    neighbor, via reservoir sampling (no extra buffer needed beyond
+    nbr_val_buf, which avoid_repeat also uses).
 
-    Falls back to a blind uniformly-random digit != old_v (the original
-    set_random behavior) only in the degenerate case where every valid
-    neighbor already shares the cell's own current value.
+    An earlier, separate "set_random" move did exactly this same thing under
+    a different name -- the two were merged since set_random was just
+    copy_neighbor generalized to the same idea. Falls back to a blind
+    uniformly-random digit != old_v only in the degenerate case where every
+    valid neighbor already shares the cell's own current value.
     """
     tr, tc = _pick_edge_biased(state, edge_positions, p_edge)
     old_v = grid[tr, tc]
@@ -556,8 +556,8 @@ def apply_avoid_repeat(state, grid, dmask, edge_positions, p_edge,
     an arbitrarily long run of that digit, so a third one in a straight line
     is pure waste.
 
-    Undo is identical to MOVE_SET_RANDOM/MOVE_COPY_NEIGHBOR (single-cell
-    revert via params), so this needs no dedicated undo function.
+    Undo is identical to MOVE_COPY_NEIGHBOR (single-cell revert via params),
+    so this needs no dedicated undo function.
     """
     tr, tc = _pick_edge_biased(state, edge_positions, p_edge)
 
@@ -670,9 +670,10 @@ def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
     """Applies one random move in-place. Fills `params` (int64[5]) with enough
     information for undo_move to reverse it exactly, and returns the move id.
 
-    nbr_val_buf (int64[8]), flag_buf (int64[10]), allowed_buf (int64[10]) are
-    scratch space used only by MOVE_AVOID_REPEAT. perm_buf (int64[10]) and
-    dmask_scratch (int64[10, ROWS]) are scratch space used only by
+    nbr_val_buf (int64[8]) is scratch space used by both MOVE_COPY_NEIGHBOR
+    and MOVE_AVOID_REPEAT. flag_buf (int64[10]) and allowed_buf (int64[10])
+    are scratch space used only by MOVE_AVOID_REPEAT. perm_buf (int64[10])
+    and dmask_scratch (int64[10, ROWS]) are scratch space used only by
     MOVE_REMAP_FULL; perm_buf also doubles as the undo record for that move
     (must survive unmodified until undo_move is called, which it does since
     undo always happens before the next apply_move on this replica)."""
@@ -685,26 +686,8 @@ def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
             chosen = k
             break
 
-    if chosen == MOVE_SET_RANDOM:
-        apply_set_random(state, grid, dmask, edge_positions, p_edge, nbr_val_buf, params)
-        return MOVE_SET_RANDOM
-
     if chosen == MOVE_COPY_NEIGHBOR:
-        tr, tc = _pick_edge_biased(state, edge_positions, p_edge)
-        di = rng_next_bounded(state, 8)
-        nr = tr + DELTAS[di, 0]
-        nc = tc + DELTAS[di, 1]
-        if 0 <= nr < ROWS and 0 <= nc < COLS:
-            old_v = grid[tr, tc]
-            new_v = grid[nr, nc]
-            set_cell(grid, dmask, tr, tc, new_v)
-            params[0] = tr
-            params[1] = tc
-            params[2] = old_v
-        else:
-            params[0] = tr
-            params[1] = tc
-            params[2] = grid[tr, tc]
+        apply_copy_neighbor(state, grid, dmask, edge_positions, p_edge, nbr_val_buf, params)
         return MOVE_COPY_NEIGHBOR
 
     if chosen == MOVE_SWAP_ADJACENT:
@@ -757,7 +740,7 @@ def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
 
 @njit(cache=True)
 def undo_move(move_id, params, grid, dmask, perm_buf, inv_buf, dmask_scratch):
-    if move_id == MOVE_SET_RANDOM or move_id == MOVE_COPY_NEIGHBOR or move_id == MOVE_AVOID_REPEAT:
+    if move_id == MOVE_COPY_NEIGHBOR or move_id == MOVE_AVOID_REPEAT:
         set_cell(grid, dmask, params[0], params[1], params[2])
     elif move_id == MOVE_SWAP_ADJACENT:
         r1, c1, r2, c2 = params[0], params[1], params[2], params[3]

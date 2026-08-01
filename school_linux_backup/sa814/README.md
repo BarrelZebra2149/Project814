@@ -36,16 +36,23 @@ Each iteration picks one move at random (`config814.SAConfig`'s `p_*` fields,
 
 | move | default weight | what changes |
 |---|---|---|
-| `set_random` | 20% | one cell (edge-biased 50% of the time) is set to one of its differing neighbor values, uniformly at random -- falls back to a blind random digit only if every neighbor already matches |
-| `copy_neighbor` | 20% | one cell copies the value of one of its 8 neighbors |
+| `copy_neighbor` | 40% | one cell (edge-biased 50% of the time) is set to one of its differing neighbor values, uniformly at random -- falls back to a blind random digit only if every neighbor already matches |
 | `swap_adjacent` | 20% | one cell and one of its 8 neighbors swap values |
 | `avoid_repeat` | 34% | one cell is forced away from a random subset of its neighbor values (or copies a neighbor, if they're already all distinct) |
 | `remap_pair` | 1% | two digits (e.g. 3 and 7) swap everywhere in the grid |
 | `remap_full` | 5% | **all 10 digits get relabeled at once via a random permutation** (e.g. `0123456789 -> 2938475610`), not just a pairwise swap |
 
-(Weights were rebalanced twice after real runs: `avoid_repeat` was raised
-10% -> 20% -> 34%, ultimately swapping shares with `set_random`, since it
-produced dramatically faster score climbs from fresh random seeds.)
+(`avoid_repeat` was raised 10% -> 20% -> 34% after real runs showed
+dramatically faster score climbs from fresh random seeds. An earlier
+separate `set_random` move (20%) was merged into `copy_neighbor`: both
+picked a value based on a cell's neighbors, so `set_random` was really just
+`copy_neighbor` generalized under a different name -- 20% + 20% = 40%. The
+two main levers to tune going forward are `p_copy_neighbor` and
+`p_avoid_repeat`. `remap_pair` was considered for a similar merge into
+`remap_full`, since `remap_full`'s random 10-digit permutation could in
+principle *happen* to be a pure 2-element swap -- but that's a 1-in-80,640
+event (`C(10,2) / 10! = 45 / 3,628,800`), nowhere near common enough to
+substitute for a dedicated move, so it stays separate.)
 
 `remap_full` generalizes `remap_pair` and is directly inspired by
 `../code/permutation.py`, which brute-forces all `10! = 3,628,800` relabelings
@@ -68,14 +75,13 @@ directly targets the waste that `w_triple` (below) penalizes — deliberately
 breaking up same-digit runs among a cell's neighbors before they turn into a
 3-in-a-row.
 
-`set_random` adopted the same neighbor-awareness: rather than a completely
-blind uniform digit, it samples uniformly among the cell's neighbor values
-that *differ* from its own current value (via reservoir sampling over
-`avoid_repeat`'s same `nbr_val_buf`, no extra buffer needed), falling back to
-a blind digit only when every neighbor already shares the current value. This
-is `copy_neighbor` generalized: instead of one fixed random direction (which
-can land out of bounds and no-op near an edge), it samples over every valid
-differing neighbor.
+`copy_neighbor` itself was upgraded with this same neighbor-awareness: rather
+than always using one fixed random direction (which can land out of bounds
+and no-op near an edge, or copy a neighbor that already matches, also a
+no-op), it samples uniformly among the cell's neighbor values that *differ*
+from its own current value (via reservoir sampling, no extra buffer needed
+beyond `avoid_repeat`'s `nbr_val_buf`), falling back to a blind random digit
+only when every neighbor already shares the current value.
 
 ## Triple-chain penalty (`w_triple`)
 
