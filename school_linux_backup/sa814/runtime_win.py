@@ -38,8 +38,8 @@ def install_handlers(on_stop) -> None:
     def _handler(signum, frame):
         global _stop_requested
         if not _stop_requested:
-            print(f"\n[sa814] received signal {signum}, finishing current block "
-                  f"and checkpointing ...", file=sys.stderr)
+            sys.stderr.write(f"\n[sa814] received signal {signum}, finishing current block "
+                             f"and checkpointing ...\n")
         _stop_requested = True
         for cb in _on_stop_callbacks:
             cb()

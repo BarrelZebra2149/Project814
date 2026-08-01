@@ -11,6 +11,7 @@ stays a leaf module with no dependency on the I/O/orchestration layer.
 
 from __future__ import annotations
 
+import sys
 import time
 from pathlib import Path
 
@@ -21,6 +22,16 @@ import checkpoint
 import core814 as core
 import seeding
 from config814 import SAConfig
+
+
+def _log(msg: str) -> None:
+    """sys.stdout.write(), not print(): skips print()'s per-call arg-join/sep/
+    end handling for one flat string + newline. The real lever for perceived
+    speed is usually how the output is consumed (redirect to a file instead
+    of watching a live SSH/tmux terminal, which pays a render + round-trip
+    cost per line) rather than the call itself, but this removes what
+    overhead there is on the Python side too."""
+    sys.stdout.write(msg + "\n")
 
 
 def _geometric_ladder(t0: float, t_end: float, n: int) -> np.ndarray:
@@ -59,7 +70,7 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
         core.build_edge_positions(), np.array(cfg.move_probs()), cfg.p_edge_bias,
         cfg, n_samples=cfg.cal_samples, p_hot=cfg.p_hot, p_cold=cfg.p_cold,
     )
-    print(f"[sa814] temperature calibration: T0={t0:.5g} T_end={t_end:.5g} "
+    _log(f"[sa814] temperature calibration: T0={t0:.5g} T_end={t_end:.5g} "
           f"(measured up-move rate {up_frac:.1%} on {cfg.cal_samples} samples)")
 
     if cfg.search_mode == "pt":
@@ -155,7 +166,7 @@ def _update_k_weights(st: dict, cfg: SAConfig) -> None:
 def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random.Generator):
     R = cfg.replicas
     if ck.grids.shape[0] != R:
-        print(f"[sa814] warning: checkpoint has {ck.grids.shape[0]} replicas, "
+        _log(f"[sa814] warning: checkpoint has {ck.grids.shape[0]} replicas, "
               f"config wants {R}; adjusting by truncating/padding.")
     n_common = min(R, ck.grids.shape[0])
 
@@ -214,7 +225,7 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
     swap_accept = np.zeros(max(R - 1, 0), dtype=np.int64)
     swap_attempt = np.zeros(max(R - 1, 0), dtype=np.int64)
 
-    print(f"[sa814] resumed run: total_iters={ck.total_iters} best_score={ck.best_score} "
+    _log(f"[sa814] resumed run: total_iters={ck.total_iters} best_score={ck.best_score} "
           f"elapsed={ck.elapsed_seconds:.1f}s")
 
     # --adaptive-k: restore the learned weights + pooled totals (these aren't
@@ -297,7 +308,7 @@ def _safe_checkpoint_io(action: str, fn, *args, **kwargs) -> None:
     try:
         fn(*args, **kwargs)
     except OSError as exc:
-        print(f"[sa814] warning: {action} failed ({exc!r}); will retry next time")
+        _log(f"[sa814] warning: {action} failed ({exc!r}); will retry next time")
 
 
 def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
@@ -308,13 +319,13 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
 
     threads = cfg.threads or runtime.default_threads()
     numba.set_num_threads(threads)
-    print(f"[sa814] run='{cfg.run_name}' mode={cfg.search_mode} accept={cfg.accept_mode} "
+    _log(f"[sa814] run='{cfg.run_name}' mode={cfg.search_mode} accept={cfg.accept_mode} "
           f"replicas={cfg.replicas} threads={threads} cfg_hash={cfg_hash}")
     if not cfg.seed_from_corpus:
-        print("[sa814] --no-seed: ignoring data/*.txt and any prior run outputs, "
+        _log("[sa814] --no-seed: ignoring data/*.txt and any prior run outputs, "
               "starting every replica from a fresh random grid")
     if cfg.adaptive_k:
-        print(f"[sa814] --adaptive-k: learning avoid_repeat/swap_adjacent/remap's k-distribution "
+        _log(f"[sa814] --adaptive-k: learning avoid_repeat/swap_adjacent/remap's k-distribution "
               f"from observed accept rates (update every {cfg.adaptive_k_update_iters} iters, "
               f"decay={cfg.adaptive_k_decay}, smoothing={cfg.adaptive_k_smoothing})")
 
@@ -324,7 +335,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
         meta = checkpoint.load_meta(run_dir)
         if ck is not None:
             if meta is not None and meta.get("cfg_hash") != cfg_hash:
-                print(f"[sa814] checkpoint cfg_hash mismatch "
+                _log(f"[sa814] checkpoint cfg_hash mismatch "
                       f"({meta.get('cfg_hash')} != {cfg_hash}); reseeding fresh from its best grid only.")
                 st = _fresh_state(cfg, run_dir, data_dir, rng)
                 if ck.best_score > st["best_score"]:
@@ -366,7 +377,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
     # best.txt at all, since that only happened on a *new* record before.
     _safe_checkpoint_io("write_best", checkpoint.write_best, run_dir, st["best_grid"], st["best_score"])
 
-    print(f"[sa814] starting from best_score={st['best_score']} total_iters={st['total_iters']}")
+    _log(f"[sa814] starting from best_score={st['best_score']} total_iters={st['total_iters']}")
 
     while True:
         t_block = time.perf_counter()
@@ -397,7 +408,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
                 best_k_avoid = [int(np.argmax(st["k_weights_avoid"][p])) + 1 for p in (0, 1)]
                 best_k_swap = [int(np.argmax(st["k_weights_swap"][p])) + 1 for p in (0, 1)]
                 best_k_remap = int(np.argmax(st["k_weights_remap"])) + 2
-                print(f"[sa814] adaptive-k updated (iter {st['total_iters']}): "
+                _log(f"[sa814] adaptive-k updated (iter {st['total_iters']}): "
                       f"avoid_repeat k*=[interior={best_k_avoid[0]}, border={best_k_avoid[1]}]  "
                       f"swap_adjacent k*=[interior={best_k_swap[0]}, border={best_k_swap[1]}]  "
                       f"remap k*={best_k_remap}")
@@ -417,7 +428,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             st["best_grid"] = st["grids"][cur_best_idx].copy()
             st["iters_since_best"] = 0
             st["stagnant_cycles"] = 0
-            print(f"[sa814] NEW RECORD: score={cur_best_score} "
+            _log(f"[sa814] NEW RECORD: score={cur_best_score} "
                   f"(iter {st['total_iters']}, t={st['elapsed_seconds']:.1f}s)")
             _safe_checkpoint_io("write_best", checkpoint.write_best, run_dir,
                                  st["best_grid"], st["best_score"])
@@ -438,7 +449,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
         if st["iters_since_best"] >= cfg.stagnation_iters:
             st["stagnant_cycles"] += 1
             use_best = st["stagnant_cycles"] < 3 or cfg.restart_from != "best"
-            print(f"[sa814] stagnation ({st['iters_since_best']} iters without improvement) -> "
+            _log(f"[sa814] stagnation ({st['iters_since_best']} iters without improvement) -> "
                   f"reheating (stagnant_cycles={st['stagnant_cycles']}, "
                   f"restart_from={'best' if use_best else 'current'})")
             for i in range(cfg.replicas):
@@ -465,7 +476,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             total_accept = int(np.sum(st["accept_counter"]))
             total_moves = int(np.sum(st["move_counter"]))
             accept_rate = total_accept / max(total_moves, 1)
-            print(f"[sa814] iter={st['total_iters']:>12d}  t={st['elapsed_seconds']:>7.1f}s  "
+            _log(f"[sa814] iter={st['total_iters']:>12d}  t={st['elapsed_seconds']:>7.1f}s  "
                   f"best={st['best_score']:>5d}  cur_best={cur_best_score:>5d}  "
                   f"mean_E={mean_e:>10.2f}  accept={accept_rate:>5.1%}  "
                   f"T=[{np.min(st['temps']):.4g},{np.max(st['temps']):.4g}]  "
@@ -479,19 +490,19 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             last_print = now
 
         if cfg.max_seconds is not None and st["elapsed_seconds"] >= cfg.max_seconds:
-            print(f"[sa814] stopping: reached max_seconds={cfg.max_seconds}")
+            _log(f"[sa814] stopping: reached max_seconds={cfg.max_seconds}")
             break
         if cfg.max_iters is not None and st["total_iters"] >= cfg.max_iters:
-            print(f"[sa814] stopping: reached max_iters={cfg.max_iters}")
+            _log(f"[sa814] stopping: reached max_iters={cfg.max_iters}")
             break
         if cfg.target_score is not None and st["best_score"] >= cfg.target_score:
-            print(f"[sa814] stopping: reached target_score={cfg.target_score}")
+            _log(f"[sa814] stopping: reached target_score={cfg.target_score}")
             break
         if stop_flag["stop"]:
-            print("[sa814] stopping: signal received")
+            _log("[sa814] stopping: signal received")
             break
 
     _safe_checkpoint_io("write_best", checkpoint.write_best, run_dir, st["best_grid"], st["best_score"])
     save_now()
-    print(f"[sa814] final: best_score={st['best_score']} total_iters={st['total_iters']} "
+    _log(f"[sa814] final: best_score={st['best_score']} total_iters={st['total_iters']} "
           f"elapsed={st['elapsed_seconds']:.1f}s -> {run_dir / 'best.txt'}")

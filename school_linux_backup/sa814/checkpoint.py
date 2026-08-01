@@ -26,6 +26,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -215,7 +216,7 @@ def _load_npz(path: Path) -> Optional[CheckpointState]:
                 iters_since_k_update=int(z["iters_since_k_update"]) if "iters_since_k_update" in z else 0,
             )
     except Exception as exc:  # noqa: BLE001 - corrupt/partial file, fall back
-        print(f"[checkpoint] failed to load {path}: {exc!r}")
+        sys.stdout.write(f"[checkpoint] failed to load {path}: {exc!r}\n")
         return None
 
 
@@ -223,7 +224,7 @@ def load(run_dir: Path) -> Optional[CheckpointState]:
     state = _load_npz(run_dir / "checkpoint.npz")
     if state is not None:
         return state
-    print("[checkpoint] checkpoint.npz missing/corrupt, trying checkpoint.prev.npz ...")
+    sys.stdout.write("[checkpoint] checkpoint.npz missing/corrupt, trying checkpoint.prev.npz ...\n")
     return _load_npz(run_dir / "checkpoint.prev.npz")
 
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import sys
 import time
 from pathlib import Path
 
@@ -28,6 +29,10 @@ CODE_DIR = REPO_ROOT / "code"
 DATA_DIR = REPO_ROOT / "data"
 
 
+def _log(msg: str) -> None:
+    sys.stdout.write(msg + "\n")
+
+
 def load_reference():
     spec = importlib.util.spec_from_file_location("orig_count_first", CODE_DIR / "814_cpu_count_first.py")
     mod = importlib.util.module_from_spec(spec)
@@ -36,13 +41,13 @@ def load_reference():
 
 
 def bench_scorer(n_grids: int):
-    print(f"\n=== Scorer throughput: old DFS vs new bitmask ({n_grids} real grids) ===")
+    _log(f"\n=== Scorer throughput: old DFS vs new bitmask ({n_grids} real grids) ===")
     orig = load_reference()
     grids = seeding.load_corpus(DATA_DIR, None, None)[:n_grids]
     if not grids:
-        print("  no corpus grids found under data/*.txt, skipping.")
+        _log("  no corpus grids found under data/*.txt, skipping.")
         return
-    print(f"  using {len(grids)} grids from data/*.txt")
+    _log(f"  using {len(grids)} grids from data/*.txt")
 
     # warm up JIT for both
     g0 = grids[0].astype(np.int64).reshape(-1)
@@ -70,9 +75,9 @@ def bench_scorer(n_grids: int):
         core.evaluate(dmask, stamp, gen, 400, 1000, 10000, True, buf)
     t_new = time.perf_counter() - t0
 
-    print(f"  old (DFS, count_first):  {len(grids)/t_old:9.1f} evals/sec  ({t_old:.3f}s total)")
-    print(f"  new (bitmask, core814):  {len(grids)/t_new:9.1f} evals/sec  ({t_new:.3f}s total)")
-    print(f"  speedup: {t_old/t_new:.2f}x")
+    _log(f"  old (DFS, count_first):  {len(grids)/t_old:9.1f} evals/sec  ({t_old:.3f}s total)")
+    _log(f"  new (bitmask, core814):  {len(grids)/t_new:9.1f} evals/sec  ({t_new:.3f}s total)")
+    _log(f"  speedup: {t_old/t_new:.2f}x")
 
 
 def _make_replica_state(R, seed_grids):
@@ -118,7 +123,7 @@ def _make_replica_state(R, seed_grids):
 
 
 def bench_sa_scaling(seconds: float):
-    print(f"\n=== SA iteration throughput scaling ({seconds:.1f}s per measurement) ===")
+    _log(f"\n=== SA iteration throughput scaling ({seconds:.1f}s per measurement) ===")
     seed_grids = seeding.load_corpus(DATA_DIR, None, None)[:8]
     if not seed_grids:
         seed_grids = [np.random.default_rng(0).integers(0, 10, (8, 14)).astype(np.uint8)]
@@ -164,8 +169,8 @@ def bench_sa_scaling(seconds: float):
                             st["k_attempt_remap"], st["k_accept_remap"])
             done += R * iters_per_segment * 5
         elapsed = time.perf_counter() - t0
-        print(f"  threads={threads:>2d} replicas={R:>2d}: {done/elapsed:10.0f} iters/sec total "
-              f"({done/elapsed/R:8.0f} iters/sec/replica)")
+        _log(f"  threads={threads:>2d} replicas={R:>2d}: {done/elapsed:10.0f} iters/sec total "
+             f"({done/elapsed/R:8.0f} iters/sec/replica)")
 
 
 def main():
