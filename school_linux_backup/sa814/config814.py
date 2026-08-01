@@ -320,4 +320,13 @@ def config_from_cli(argv=None, default_preset: str = "score_first") -> SAConfig:
         cfg.resume = False
         cfg.fresh = True
 
+    # want_count just gates whether evaluate() bothers computing the
+    # [count_lo, count_hi) formable count at all -- if the caller set a
+    # nonzero --w-count (e.g. to fold it into a score_first run, which
+    # defaults want_count off), that weight would silently do nothing
+    # without this, since core814.evaluate returns count=0 when want_count
+    # is False regardless of w_count.
+    if cfg.w_count > 0.0:
+        cfg.want_count = True
+
     return cfg
