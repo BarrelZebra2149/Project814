@@ -39,7 +39,7 @@ GRID_SIZE = GRID_ROWS * GRID_COLS
 MAX_SCORE = 8142
 
 # Move operator names, in the fixed order used by core814's move dispatcher.
-MOVE_NAMES = ("set_random", "copy_neighbor", "swap_adjacent", "avoid_repeat", "remap_pair", "remap_full")
+MOVE_NAMES = ("copy_neighbor", "swap_adjacent", "avoid_repeat", "remap")
 
 # Acceptance-rule / search-mode choices exposed on the CLI.
 ACCEPT_MODES = ("sa", "lahc", "dlas")
@@ -76,33 +76,73 @@ class SAConfig:
     w_look: float = 0.0020
     w_count: float = 0.0
     w_heur: float = 0.0
-    w_triple: float = 0.001     # penalty per overlapping 3-in-a-row same-digit window
-                                # (see core814.count_triple_chains) -- since a walk may
-                                # revisit cells, only 2 same-digit cells are ever needed
-                                # to form any length of repeated-digit number, so a 3rd
-                                # in a straight line is pure waste. Kept small enough that
-                                # even a heavily-degenerate grid's worth of triples can
-                                # never outweigh a single real score point.
+    w_triple: float = 0.005     # penalty per 3-cell same-digit chain reachable via an
+                                # 8-directional walk that may bend at each step (see
+                                # core814.count_triple_chains) -- since a walk may revisit
+                                # cells, only 2 same-digit cells are ever needed to form
+                                # any length of repeated-digit number, so a 3rd anywhere
+                                # reachable is pure waste. Raised 5x from an earlier 0.001
+                                # once the counter was corrected to catch bent (not just
+                                # straight-line) triples, since the count now matters more.
+                                # Calibrated against a realistic worst case of ~200 triples
+                                # a search might actually wander through (not the ~2400 of a
+                                # fully degenerate all-one-digit grid, which scores near 0
+                                # and is never seriously explored) -- 200 * 0.005 = 1.0, so
+                                # even that can only just barely brush a single real score
+                                # point, never flip it outright.
     want_count: bool = False     # whether to compute the [count_lo, count_hi) formable count
     look_window: int = 400       # how far past the first failure to keep scanning
     count_lo: int = 1000
     count_hi: int = 10000
 
     # --- move operator mix (must sum to ~1.0; core814 normalizes defensively) ---
-    p_set_random: float = 0.20   # "blind" random rewrite, no neighbor awareness
-    p_copy_neighbor: float = 0.20
-    p_swap_adjacent: float = 0.20
+    p_copy_neighbor: float = 0.40  # sets a cell to one of its differing neighbor values
+                                   # (uniformly, via reservoir sampling), falling back to a
+                                   # blind random digit only if every neighbor already
+                                   # matches the cell's own value -- see
+                                   # core814.apply_copy_neighbor. An earlier separate
+                                   # "set_random" move did the same thing under a different
+                                   # name and was merged in here (0.20 + 0.20 -> 0.40),
+                                   # since it was just this same idea generalized.
+    p_swap_adjacent: float = 0.20  # deranges (permutes with no fixed point, so every
+                                   # touched cell's VALUE genuinely changes) the target
+                                   # cell + a random k in [1,n] of its neighbors as one
+                                   # cluster -- see core814.apply_swap_cluster. k=1
+                                   # reproduces the original pairwise-exchange exactly.
     p_avoid_repeat: float = 0.34  # force a cell away from a random subset of its neighbor
                                   # values (or copy a neighbor if they're already all
                                   # distinct) -- see core814.apply_avoid_repeat. Directly
                                   # targets the same waste that w_triple penalizes. Raised
-                                  # 10% -> 20% -> 34% (swapped with p_set_random) after real
-                                  # runs showed dramatically faster score climbs from fresh
-                                  # random seeds once this move and w_triple were introduced.
-    p_remap_pair: float = 0.01   # swap 2 digits everywhere in the grid
-    p_remap_full: float = 0.05  # relabel all 10 digits at once via a random permutation
-                                 # (e.g. 0123456789 -> 2938475610) -- see core814.apply_remap_full
+                                  # 10% -> 20% -> 34% after real runs showed dramatically
+                                  # faster score climbs from fresh random seeds once this
+                                  # move and w_triple were introduced. The main two levers
+                                  # to tune going forward are this and p_copy_neighbor.
+    p_remap: float = 0.06  # picks k in [2,10] uniformly, then deranges just k digits
+                           # (so every one of them genuinely changes to a different
+                           # digit) -- see core814.apply_remap. Unifies two former
+                           # separate moves: remap_pair (swap exactly 2 digits, always
+                           # k=2) and remap_full (relabel all 10 via a random
+                           # permutation, k=10) were really the same idea at different
+                           # k, so their shares combine here (0.01 + 0.05 -> 0.06).
     p_edge_bias: float = 0.5     # probability a local move targets a border cell
+
+    # --- adaptive k-distribution learning (opt-in) ----------------------------
+    # avoid_repeat/swap_adjacent/remap each draw a k (how many neighbors, or
+    # digits, to touch) uniformly by default. If enabled, k is instead drawn
+    # from weights learned from observed accept rates, pooled across all
+    # replicas and updated periodically -- see core814.weighted_index_choice
+    # and driver._update_k_weights. copy_neighbor is excluded: its k provably
+    # doesn't affect the outcome (see apply_copy_neighbor), so there is
+    # nothing to learn there. Off by default; enable with --adaptive-k.
+    adaptive_k: bool = False
+    adaptive_k_update_iters: int = 50_000   # total iters between reweighting passes
+    adaptive_k_smoothing: float = 2.0       # Laplace smoothing added to accept/attempt
+                                             # before computing a rate, so a k that
+                                             # hasn't been tried much yet (or got
+                                             # unlucky early) isn't zeroed out
+    adaptive_k_decay: float = 0.9           # decay applied to old pooled counts at each
+                                             # reweighting, so learning can still adapt
+                                             # if the "right" k shifts over a long run
 
     # --- temperature calibration ---------------------------------------------
     cal_samples: int = 2000
@@ -127,12 +167,10 @@ class SAConfig:
 
     def move_probs(self) -> tuple:
         return (
-            self.p_set_random,
             self.p_copy_neighbor,
             self.p_swap_adjacent,
             self.p_avoid_repeat,
-            self.p_remap_pair,
-            self.p_remap_full,
+            self.p_remap,
         )
 
     def cfg_hash(self) -> str:
@@ -141,8 +179,9 @@ class SAConfig:
             "accept_mode", "search_mode", "lahc_len",
             "w_score", "w_look", "w_count", "w_heur", "w_triple", "want_count",
             "look_window", "count_lo", "count_hi",
-            "p_set_random", "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap_pair",
-            "p_remap_full", "p_edge_bias", "replicas",
+            "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap",
+            "p_edge_bias", "replicas",
+            "adaptive_k", "adaptive_k_update_iters", "adaptive_k_smoothing", "adaptive_k_decay",
         ]
         d = asdict(self)
         payload = json.dumps({k: d[k] for k in semantic_fields}, sort_keys=True)
@@ -248,6 +287,14 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
     p.add_argument("--reheat", type=float, default=None)
     p.add_argument("--stagnation-iters", type=int, default=None)
     p.add_argument("--cycle-iters", type=int, default=None)
+
+    p.add_argument("--adaptive-k", action="store_true", default=None,
+                    help="Learn per-k acceptance-rate weights for avoid_repeat/"
+                         "swap_adjacent/remap's k-selection from this run's own "
+                         "observed data, instead of drawing k uniformly.")
+    p.add_argument("--adaptive-k-update-iters", type=int, default=None)
+    p.add_argument("--adaptive-k-smoothing", type=float, default=None)
+    p.add_argument("--adaptive-k-decay", type=float, default=None)
     return p
 
 

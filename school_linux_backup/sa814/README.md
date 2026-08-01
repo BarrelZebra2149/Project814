@@ -36,23 +36,49 @@ Each iteration picks one move at random (`config814.SAConfig`'s `p_*` fields,
 
 | move | default weight | what changes |
 |---|---|---|
-| `set_random` | 40% | one cell (edge-biased 50% of the time) becomes a different random digit |
-| `copy_neighbor` | 22% | one cell copies the value of one of its 8 neighbors |
-| `swap_adjacent` | 22% | one cell and one of its 8 neighbors swap values |
-| `avoid_repeat` | 10% | one cell is forced away from a random subset of its neighbor values (or copies a neighbor, if they're already all distinct) |
-| `remap_pair` | 1% | two digits (e.g. 3 and 7) swap everywhere in the grid |
-| `remap_full` | 5% | **all 10 digits get relabeled at once via a random permutation** (e.g. `0123456789 -> 2938475610`), not just a pairwise swap |
+| `copy_neighbor` | 40% | one cell (edge-biased 50% of the time) is set to one of its differing neighbor values, uniformly at random -- falls back to a blind random digit only if every neighbor already matches |
+| `swap_adjacent` | 20% | derange the target cell + a random k in [1,n] of its neighbors as one cluster (see below) |
+| `avoid_repeat` | 34% | one cell is forced away from a random subset of its neighbor values (or copies a neighbor, if they're already all distinct) |
+| `remap` | 6% | pick k in [2,10], derange just those k digits everywhere in the grid (see below) |
 
-`remap_full` generalizes `remap_pair` and is directly inspired by
-`../code/permutation.py`, which brute-forces all `10! = 3,628,800` relabelings
-of one fixed grid to find the best-scoring digit assignment — proof that the
-same underlying cell/cluster structure can score wildly differently purely
-depending on which digit labels which cluster (since formability of a target
-number depends on which physical cells carry *that* digit). `remap_full` lets
-SA reach that kind of relabeling jump stochastically during the search itself,
-rather than only via a separate exhaustive post-processing pass. It's
-reversible in one step (undo applies the inverse permutation) so it costs
-nothing extra to try and reject.
+(`avoid_repeat` was raised 10% -> 20% -> 34% after real runs showed
+dramatically faster score climbs from fresh random seeds. An earlier
+separate `set_random` move (20%) was merged into `copy_neighbor`: both
+picked a value based on a cell's neighbors, so `set_random` was really just
+`copy_neighbor` generalized under a different name -- 20% + 20% = 40%. The
+two main levers to tune going forward are `p_copy_neighbor` and
+`p_avoid_repeat`.)
+
+### `remap`: unifying remap_pair and remap_full
+
+There used to be two separate moves: `remap_pair` (swap exactly 2 digits,
+1%) and `remap_full` (relabel all 10 via a uniformly random permutation,
+5%). Naively, could `remap_full` produce `remap_pair`'s effect just by
+chance? Only 1-in-80,640 (`C(10,2) / 10! = 45 / 3,628,800`) -- nowhere near
+often enough to substitute for a dedicated move.
+
+But parameterizing k directly (rather than hoping a uniform full-permutation
+happens to reduce to one) unifies them for real: `core814.apply_remap` picks
+k uniformly in `[2, 10]`, chooses k distinct digits, and **deranges** just
+those k (a permutation with no fixed points, so every chosen digit is
+guaranteed to actually change -- see below). `k=2` always produces a
+genuine swap (the only derangement of 2 elements *is* the transposition) --
+exactly the old `remap_pair`. `k=10` deranges all 10 at once, close to the
+old `remap_full` except now every digit is guaranteed to change (a plain
+uniform permutation could leave ~1 digit fixed by chance). Their shares
+combine: `p_remap = 0.01 + 0.05 = 0.06`.
+
+Ported from the spirit of `../code/permutation.py`, which brute-forces all
+`10! = 3,628,800` relabelings of one fixed grid to find the best-scoring
+digit assignment — proof that the same underlying cell/cluster structure can
+score wildly differently purely depending on which digit labels which
+cluster (since formability of a target number depends on which physical
+cells carry *that* digit). `remap` lets SA reach that kind of relabeling
+jump stochastically during the search itself. It's reversible in one step
+(undo applies the inverse permutation), so it costs nothing extra to try
+and reject.
+
+### `avoid_repeat` and `copy_neighbor`
 
 `avoid_repeat` replaced an earlier `line_shift` move (whole-line rotation,
 removed). It targets a random cell, looks at its valid 8-directional
@@ -64,24 +90,140 @@ directly targets the waste that `w_triple` (below) penalizes — deliberately
 breaking up same-digit runs among a cell's neighbors before they turn into a
 3-in-a-row.
 
+`copy_neighbor` itself was upgraded with this same neighbor-awareness: it
+targets a single cell (only that one cell ever changes -- an earlier draft
+of this move accidentally homogenized the whole target+neighbors cluster to
+one value, which would have actively *grown* same-digit blobs and fought
+`w_triple` head-on; that was caught before shipping) and picks a random pool
+of size k in `[1,n]` of its valid neighbor values, then sets the cell to one
+value drawn uniformly from that pool. Note k doesn't actually change the
+resulting distribution here (for any fixed neighbor, `P(chosen) = P(in the
+k-pool) * P(picked | pool size k) = (k/n)*(1/k) = 1/n`, independent of k) --
+it's kept as an explicit, trackable parameter for consistency with
+`avoid_repeat`/`remap`/`swap_adjacent`, not because it changes what this
+particular move does.
+
+(All of `avoid_repeat`/`copy_neighbor`/`swap_adjacent` currently draw k
+**uniformly** over whatever range is available at each cell -- 1..n
+neighbors, n = 3/5/8 for a corner/edge/interior cell -- and `remap` draws k
+uniformly over `[2,10]`. A non-uniform, empirically-learned weighting over k
+is a natural future refinement once real acceptance-rate data exists to
+tune it from; see `--adaptive-k` below.)
+
+### `swap_adjacent`: generalized to a k+1-cell cluster derangement
+
+The original `swap_adjacent` exchanged values between exactly 2 cells (the
+target and one random neighbor). `core814.apply_swap_cluster` generalizes
+this: pick a random subset of size k in `[1, n]` of the target's valid
+neighbors, then **derange the values** held by the target + those k
+neighbors (m = k+1 cells total) among themselves -- the multiset of values
+in the cluster is preserved, only which cell holds which value changes.
+`k=1` (a cluster of exactly 2 cells) has only one possible derangement, the
+pairwise exchange, exactly reproducing the original move.
+
+**Guaranteeing every touched cell's value actually changes is harder than
+it sounds.** A plain index derangement (`perm[i] != i` for every i) is not
+enough: if two cells in the cluster already hold the same digit, a
+derangement can still map one onto the other's slot and leave the *visible
+value* unchanged there, even though the abstract index moved.
+`core814.random_value_derangement` checks the actual values, not indices.
+
+A valid rearrangement where every value changes exists **if and only if no
+single digit occupies more than half the cluster** (`max_freq <= m // 2`,
+by pigeonhole -- otherwise there aren't enough differently-valued slots to
+send every occurrence of the majority digit to). The function first
+rejection-samples plain index derangements and checks the values (usually
+succeeds in 1-3 tries) but that alone was measured to fail on ~1% of
+genuinely feasible near-threshold cases even at 50 attempts, since a random
+permutation satisfying the *value* condition gets rare right at the
+boundary. It falls back to a **constructive** method proven correct
+whenever any valid arrangement exists at all (verified against 143,975
+randomized feasible cases, 0 failures): sort positions by value so
+same-valued positions land in one contiguous block, then rotate that sorted
+order by `ceil(m/2)` -- since a same-value block can be at most `m // 2`
+long when feasible, this rotation always pushes every position past its own
+block into a differently-valued one. Only in the genuinely infeasible case
+(one digit is the strict majority of the cluster) does the move end up a
+harmless no-op for the excess cells, since no rearrangement could ever have
+changed them anyway.
+
 ## Triple-chain penalty (`w_triple`)
 
 Since a walk may revisit cells, only **two** adjacent same-digit cells are
 ever needed to form an arbitrarily long run of that digit (the walk just
 bounces between them to spell `11`, `111`, `1111`, ... as needed). A
-**third** cell continuing that same straight line adds nothing to
-formability — it's a wasted cell that could have carried a more useful digit
-for some other number.
+**third** cell reachable from those two adds nothing to formability — it's a
+wasted cell that could have carried a more useful digit for some other
+number.
 
-`core814.count_triple_chains(grid)` counts every overlapping window of 3
-consecutive identical digits along the 4 undirected axis directions
-(horizontal, vertical, both diagonals — each axis counted once). A run of
-length L >= 3 contributes `L - 2` overlapping triples, so longer redundant
-runs are penalized more. The energy function subtracts
-`w_triple * triple_count` (default `w_triple = 0.001`, small enough that even
-a heavily-degenerate grid's worth of triples can never outweigh a single real
-score point) — see `core814.energy_of`. `avoid_repeat` is the move most
-directly aimed at reducing this count during the search.
+`core814.count_triple_chains(grid)` counts every 3-cell same-digit chain
+reachable via an 8-directional walk that is free to **bend** at each step
+(start -> mid -> end, each an 8-neighbor of the previous, end != start) --
+not just straight lines. An earlier version only checked 4 fixed axis
+directions and missed bent chains like `(1,1)->(1,2)->(2,1)`, which are
+exactly as wasteful as a straight run; the corrected version catches those
+too (verified against a brute-force Python mirror, 0 mismatches over 500
+grids). For a simple straight run of length L >= 3 with no branching, the
+count still reduces to exactly `L - 2`, matching the original formula;
+branching/blob shapes now correctly count the extra bent triples through
+them as well.
+
+The energy function subtracts `w_triple * triple_count` (default
+`w_triple = 0.005`) — see `core814.energy_of`. Calibrated against a
+realistic worst case of ~200 triples a search might actually wander through
+(not the ~2400 of a fully degenerate all-one-digit grid, which scores near 0
+and is never seriously explored): `200 * 0.005 = 1.0`, so even that can only
+just brush a single real score point, never flip it outright. `avoid_repeat`
+is the move most directly aimed at reducing this count during the search.
+
+## `--adaptive-k`: learning the k-distribution from observed data
+
+`avoid_repeat`, `swap_adjacent`, and `remap` each draw a k (how many
+neighbors, or digits, to touch) uniformly by default. `--adaptive-k` instead
+learns a per-k weighting from this run's own observed accept rates, so the
+search finds out for itself which k values tend to pay off rather than
+treating them all as equally likely to help.
+
+**What's tracked, and why not everything:** `copy_neighbor` is excluded --
+its k provably doesn't change the resulting value distribution (see
+`apply_copy_neighbor`'s docstring), so there's nothing to learn there.
+`avoid_repeat` and `swap_adjacent` are tracked separately for **interior**
+cells (8 neighbors) vs **border** cells (corner or edge, 3 or 5 neighbors)
+-- two groups, not three, so a corner and an edge cell pool their statistics
+together even though their actual neighbor counts differ (`weighted_index_
+choice` just renormalizes over whichever range is valid at each cell).
+`remap`'s k isn't position-based at all (it's about how many *digits* get
+touched), so it has one shared distribution.
+
+**How it works:** every replica accumulates `(k, accept?)` outcomes into
+per-(move, position-type, k) counters as it runs (`core814._anneal_one`).
+Every `--adaptive-k-update-iters` (default 50,000) total iterations,
+`driver._update_k_weights` sums those counters across all replicas, folds
+them into a decayed running total (`--adaptive-k-decay`, default 0.9, so
+old evidence gradually fades and the learned preference can still shift
+over a long run), and recomputes each k's weight as a Laplace-smoothed
+acceptance rate: `(accepted + smoothing) / (attempted + 2*smoothing)`
+(`--adaptive-k-smoothing`, default 2.0, so a k that hasn't been tried much
+yet -- or got unlucky early -- isn't zeroed out). The updated weights feed
+`core814.weighted_index_choice`, the single sampling path used for every
+k-draw in the solver: with all-ones weights (the default, `--adaptive-k`
+off) it's mathematically identical to a uniform draw, so enabling the flag
+changes *only* what's in the weight arrays, not any code path.
+
+This state (pooled counters + current weights) is included in the
+checkpoint, so a resumed run picks up learning where it left off rather
+than starting over.
+
+```bash
+python win_score_first.py --adaptive-k
+# tune the update cadence / smoothing / decay if you want:
+python win_score_first.py --adaptive-k --adaptive-k-update-iters 20000 --adaptive-k-smoothing 1.0 --adaptive-k-decay 0.95
+```
+
+Enabling or disabling `--adaptive-k` (or changing its hyperparameters)
+changes `cfg_hash`, so resuming a checkpoint saved under different
+`--adaptive-k` settings reseeds fresh from its best grid rather than
+silently mixing old and new k-statistics.
 
 ## Layout
 
@@ -129,8 +271,9 @@ python win_score_first.py --fresh --no-seed --run-name from_scratch
 ```
 
 Useful flags: `--replicas N`, `--accept {sa,lahc,dlas}`, `--mode {pt,anneal}`,
-`--target-score N`, `--iters N`, `--seed-file path.txt`, `--no-seed`. Run
-`python win_score_first.py --help` for the full list.
+`--target-score N`, `--iters N`, `--seed-file path.txt`, `--no-seed`,
+`--adaptive-k` (see below). Run `python win_score_first.py --help` for the
+full list.
 
 ### First-run compile cost
 

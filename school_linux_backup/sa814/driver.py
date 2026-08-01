@@ -77,6 +77,8 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
     swap_accept = np.zeros(max(R - 1, 0), dtype=np.int64)
     swap_attempt = np.zeros(max(R - 1, 0), dtype=np.int64)
 
+    k_state = _fresh_k_state(R)
+
     best_idx = int(np.argmax(scores_arr))
 
     state = dict(
@@ -91,7 +93,63 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
         total_iters=0, iters_since_best=0, elapsed_seconds=0.0, stagnant_cycles=0,
         t0=t0, t_end=t_end,
     )
+    state.update(k_state)
     return state
+
+
+def _fresh_k_state(R: int) -> dict:
+    """--adaptive-k state: shared k-selection weights (all-ones = uniform,
+    the default) plus per-replica attempt/accept counters and the decayed
+    cross-block pooled totals they get folded into. See
+    core814.weighted_index_choice and _update_k_weights."""
+    return dict(
+        k_weights_avoid=np.ones((2, 8), dtype=np.float64),
+        k_weights_swap=np.ones((2, 8), dtype=np.float64),
+        k_weights_remap=np.ones(9, dtype=np.float64),
+        k_attempt_avoid=np.zeros((R, 2, 8), dtype=np.int64),
+        k_accept_avoid=np.zeros((R, 2, 8), dtype=np.int64),
+        k_attempt_swap=np.zeros((R, 2, 8), dtype=np.int64),
+        k_accept_swap=np.zeros((R, 2, 8), dtype=np.int64),
+        k_attempt_remap=np.zeros((R, 9), dtype=np.int64),
+        k_accept_remap=np.zeros((R, 9), dtype=np.int64),
+        k_pool_attempt_avoid=np.zeros((2, 8), dtype=np.float64),
+        k_pool_accept_avoid=np.zeros((2, 8), dtype=np.float64),
+        k_pool_attempt_swap=np.zeros((2, 8), dtype=np.float64),
+        k_pool_accept_swap=np.zeros((2, 8), dtype=np.float64),
+        k_pool_attempt_remap=np.zeros(9, dtype=np.float64),
+        k_pool_accept_remap=np.zeros(9, dtype=np.float64),
+        iters_since_k_update=0,
+    )
+
+
+def _update_k_weights(st: dict, cfg: SAConfig) -> None:
+    """Pools this block's per-replica attempt/accept counts into the decayed
+    running totals, recomputes k-selection weights from them (Laplace-
+    smoothed acceptance rate: (accept + smoothing) / (attempt + 2*smoothing)),
+    and resets the per-replica counters for the next block.
+    weighted_index_choice only cares about relative magnitudes within the
+    valid k-range at sampling time, so these don't need to sum to 1."""
+    decay = cfg.adaptive_k_decay
+    smoothing = cfg.adaptive_k_smoothing
+
+    for name in ("avoid", "swap"):
+        block_attempt = st[f"k_attempt_{name}"].sum(axis=0)
+        block_accept = st[f"k_accept_{name}"].sum(axis=0)
+        st[f"k_pool_attempt_{name}"] = st[f"k_pool_attempt_{name}"] * decay + block_attempt
+        st[f"k_pool_accept_{name}"] = st[f"k_pool_accept_{name}"] * decay + block_accept
+        st[f"k_weights_{name}"][:] = ((st[f"k_pool_accept_{name}"] + smoothing) /
+                                      (st[f"k_pool_attempt_{name}"] + 2.0 * smoothing))
+        st[f"k_attempt_{name}"][:] = 0
+        st[f"k_accept_{name}"][:] = 0
+
+    block_attempt = st["k_attempt_remap"].sum(axis=0)
+    block_accept = st["k_accept_remap"].sum(axis=0)
+    st["k_pool_attempt_remap"] = st["k_pool_attempt_remap"] * decay + block_attempt
+    st["k_pool_accept_remap"] = st["k_pool_accept_remap"] * decay + block_accept
+    st["k_weights_remap"][:] = ((st["k_pool_accept_remap"] + smoothing) /
+                                (st["k_pool_attempt_remap"] + 2.0 * smoothing))
+    st["k_attempt_remap"][:] = 0
+    st["k_accept_remap"][:] = 0
 
 
 def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random.Generator):
@@ -159,7 +217,22 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
     print(f"[sa814] resumed run: total_iters={ck.total_iters} best_score={ck.best_score} "
           f"elapsed={ck.elapsed_seconds:.1f}s")
 
-    return dict(
+    # --adaptive-k: restore the learned weights + pooled totals (these aren't
+    # per-replica, so an R change doesn't affect them); per-replica
+    # attempt/accept counters always start fresh for the new block.
+    k_state = _fresh_k_state(R)
+    k_state["k_weights_avoid"] = ck.k_weights_avoid.copy()
+    k_state["k_weights_swap"] = ck.k_weights_swap.copy()
+    k_state["k_weights_remap"] = ck.k_weights_remap.copy()
+    k_state["k_pool_attempt_avoid"] = ck.k_pool_attempt_avoid.copy()
+    k_state["k_pool_accept_avoid"] = ck.k_pool_accept_avoid.copy()
+    k_state["k_pool_attempt_swap"] = ck.k_pool_attempt_swap.copy()
+    k_state["k_pool_accept_swap"] = ck.k_pool_accept_swap.copy()
+    k_state["k_pool_attempt_remap"] = ck.k_pool_attempt_remap.copy()
+    k_state["k_pool_accept_remap"] = ck.k_pool_accept_remap.copy()
+    k_state["iters_since_k_update"] = int(ck.iters_since_k_update)
+
+    state = dict(
         grids=grids, dmasks=dmasks, stamps=stamps, gens=gens,
         digit_bufs=digit_bufs, rng_states=rng_states,
         scores_arr=scores_arr, looks_arr=looks_arr, counts_arr=counts_arr, energies=energies,
@@ -171,6 +244,8 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
         elapsed_seconds=float(ck.elapsed_seconds), stagnant_cycles=int(ck.stagnant_cycles),
         t0=t0, t_end=t_end,
     )
+    state.update(k_state)
+    return state
 
 
 def _to_checkpoint_state(st: dict) -> checkpoint.CheckpointState:
@@ -184,6 +259,11 @@ def _to_checkpoint_state(st: dict) -> checkpoint.CheckpointState:
         best_score=st["best_score"], best_energy=st["best_energy"],
         total_iters=st["total_iters"], iters_since_best=st["iters_since_best"],
         elapsed_seconds=st["elapsed_seconds"], stagnant_cycles=st["stagnant_cycles"],
+        k_pool_attempt_avoid=st["k_pool_attempt_avoid"], k_pool_accept_avoid=st["k_pool_accept_avoid"],
+        k_pool_attempt_swap=st["k_pool_attempt_swap"], k_pool_accept_swap=st["k_pool_accept_swap"],
+        k_pool_attempt_remap=st["k_pool_attempt_remap"], k_pool_accept_remap=st["k_pool_accept_remap"],
+        k_weights_avoid=st["k_weights_avoid"], k_weights_swap=st["k_weights_swap"],
+        k_weights_remap=st["k_weights_remap"], iters_since_k_update=st["iters_since_k_update"],
     )
 
 
@@ -218,6 +298,10 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
     if not cfg.seed_from_corpus:
         print("[sa814] --no-seed: ignoring data/*.txt and any prior run outputs, "
               "starting every replica from a fresh random grid")
+    if cfg.adaptive_k:
+        print(f"[sa814] --adaptive-k: learning avoid_repeat/swap_adjacent/remap's k-distribution "
+              f"from observed accept rates (update every {cfg.adaptive_k_update_iters} iters, "
+              f"decay={cfg.adaptive_k_decay}, smoothing={cfg.adaptive_k_smoothing})")
 
     st = None
     if cfg.resume and not cfg.fresh:
@@ -280,11 +364,27 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             cfg.look_window, cfg.count_lo, cfg.count_hi,
             accept_mode, iters_per_segment, n_segments, do_swaps,
             st["accept_counter"], st["move_counter"], st["swap_accept"], st["swap_attempt"],
+            st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],
+            st["k_attempt_avoid"], st["k_accept_avoid"], st["k_attempt_swap"], st["k_accept_swap"],
+            st["k_attempt_remap"], st["k_accept_remap"],
         )
         block_elapsed = time.perf_counter() - t_block
         iters_done = cfg.replicas * iters_per_segment * n_segments
         st["total_iters"] += iters_done
         st["elapsed_seconds"] = time.perf_counter() - wall_start
+
+        if cfg.adaptive_k:
+            st["iters_since_k_update"] += iters_done
+            if st["iters_since_k_update"] >= cfg.adaptive_k_update_iters:
+                _update_k_weights(st, cfg)
+                st["iters_since_k_update"] = 0
+                best_k_avoid = [int(np.argmax(st["k_weights_avoid"][p])) + 1 for p in (0, 1)]
+                best_k_swap = [int(np.argmax(st["k_weights_swap"][p])) + 1 for p in (0, 1)]
+                best_k_remap = int(np.argmax(st["k_weights_remap"])) + 2
+                print(f"[sa814] adaptive-k updated (iter {st['total_iters']}): "
+                      f"avoid_repeat k*=[interior={best_k_avoid[0]}, border={best_k_avoid[1]}]  "
+                      f"swap_adjacent k*=[interior={best_k_swap[0]}, border={best_k_swap[1]}]  "
+                      f"remap k*={best_k_remap}")
 
         measured_iters_per_sec = iters_done / max(block_elapsed, 1e-6)
         if block_elapsed > 0:
