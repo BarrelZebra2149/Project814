@@ -116,7 +116,7 @@ def bench_sa_scaling(seconds: float):
         seed_grids = [np.random.default_rng(0).integers(0, 10, (8, 14)).astype(np.uint8)]
 
     edge_pos = core.build_edge_positions()
-    move_probs = np.array([0.40, 0.20, 0.34, 0.01, 0.05])
+    move_probs = np.array([0.40, 0.20, 0.34, 0.06])
     swap_rng = core.make_rng_state(1)
 
     max_threads = numba.config.NUMBA_NUM_THREADS

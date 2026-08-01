@@ -37,10 +37,9 @@ Each iteration picks one move at random (`config814.SAConfig`'s `p_*` fields,
 | move | default weight | what changes |
 |---|---|---|
 | `copy_neighbor` | 40% | one cell (edge-biased 50% of the time) is set to one of its differing neighbor values, uniformly at random -- falls back to a blind random digit only if every neighbor already matches |
-| `swap_adjacent` | 20% | one cell and one of its 8 neighbors swap values |
+| `swap_adjacent` | 20% | derange the target cell + a random k in [1,n] of its neighbors as one cluster (see below) |
 | `avoid_repeat` | 34% | one cell is forced away from a random subset of its neighbor values (or copies a neighbor, if they're already all distinct) |
-| `remap_pair` | 1% | two digits (e.g. 3 and 7) swap everywhere in the grid |
-| `remap_full` | 5% | **all 10 digits get relabeled at once via a random permutation** (e.g. `0123456789 -> 2938475610`), not just a pairwise swap |
+| `remap` | 6% | pick k in [2,10], derange just those k digits everywhere in the grid (see below) |
 
 (`avoid_repeat` was raised 10% -> 20% -> 34% after real runs showed
 dramatically faster score climbs from fresh random seeds. An earlier
@@ -48,22 +47,38 @@ separate `set_random` move (20%) was merged into `copy_neighbor`: both
 picked a value based on a cell's neighbors, so `set_random` was really just
 `copy_neighbor` generalized under a different name -- 20% + 20% = 40%. The
 two main levers to tune going forward are `p_copy_neighbor` and
-`p_avoid_repeat`. `remap_pair` was considered for a similar merge into
-`remap_full`, since `remap_full`'s random 10-digit permutation could in
-principle *happen* to be a pure 2-element swap -- but that's a 1-in-80,640
-event (`C(10,2) / 10! = 45 / 3,628,800`), nowhere near common enough to
-substitute for a dedicated move, so it stays separate.)
+`p_avoid_repeat`.)
 
-`remap_full` generalizes `remap_pair` and is directly inspired by
-`../code/permutation.py`, which brute-forces all `10! = 3,628,800` relabelings
-of one fixed grid to find the best-scoring digit assignment — proof that the
-same underlying cell/cluster structure can score wildly differently purely
-depending on which digit labels which cluster (since formability of a target
-number depends on which physical cells carry *that* digit). `remap_full` lets
-SA reach that kind of relabeling jump stochastically during the search itself,
-rather than only via a separate exhaustive post-processing pass. It's
-reversible in one step (undo applies the inverse permutation) so it costs
-nothing extra to try and reject.
+### `remap`: unifying remap_pair and remap_full
+
+There used to be two separate moves: `remap_pair` (swap exactly 2 digits,
+1%) and `remap_full` (relabel all 10 via a uniformly random permutation,
+5%). Naively, could `remap_full` produce `remap_pair`'s effect just by
+chance? Only 1-in-80,640 (`C(10,2) / 10! = 45 / 3,628,800`) -- nowhere near
+often enough to substitute for a dedicated move.
+
+But parameterizing k directly (rather than hoping a uniform full-permutation
+happens to reduce to one) unifies them for real: `core814.apply_remap` picks
+k uniformly in `[2, 10]`, chooses k distinct digits, and **deranges** just
+those k (a permutation with no fixed points, so every chosen digit is
+guaranteed to actually change -- see below). `k=2` always produces a
+genuine swap (the only derangement of 2 elements *is* the transposition) --
+exactly the old `remap_pair`. `k=10` deranges all 10 at once, close to the
+old `remap_full` except now every digit is guaranteed to change (a plain
+uniform permutation could leave ~1 digit fixed by chance). Their shares
+combine: `p_remap = 0.01 + 0.05 = 0.06`.
+
+Ported from the spirit of `../code/permutation.py`, which brute-forces all
+`10! = 3,628,800` relabelings of one fixed grid to find the best-scoring
+digit assignment — proof that the same underlying cell/cluster structure can
+score wildly differently purely depending on which digit labels which
+cluster (since formability of a target number depends on which physical
+cells carry *that* digit). `remap` lets SA reach that kind of relabeling
+jump stochastically during the search itself. It's reversible in one step
+(undo applies the inverse permutation), so it costs nothing extra to try
+and reject.
+
+### `avoid_repeat` and `copy_neighbor`
 
 `avoid_repeat` replaced an earlier `line_shift` move (whole-line rotation,
 removed). It targets a random cell, looks at its valid 8-directional
@@ -82,6 +97,51 @@ no-op), it samples uniformly among the cell's neighbor values that *differ*
 from its own current value (via reservoir sampling, no extra buffer needed
 beyond `avoid_repeat`'s `nbr_val_buf`), falling back to a blind random digit
 only when every neighbor already shares the current value.
+
+(Both currently draw k, or the neighbor to differ from, **uniformly** over
+whatever range is available at each cell -- 1..n neighbors, n = 3/5/8 for a
+corner/edge/interior cell. A non-uniform, empirically-learned weighting over
+k (and possibly split by corner/edge/interior, since those are meaningfully
+different situations) is a natural future refinement once real
+acceptance-rate data exists to tune it from -- there's no principled way to
+guess good numbers without that data yet.)
+
+### `swap_adjacent`: generalized to a k+1-cell cluster derangement
+
+The original `swap_adjacent` exchanged values between exactly 2 cells (the
+target and one random neighbor). `core814.apply_swap_cluster` generalizes
+this: pick a random subset of size k in `[1, n]` of the target's valid
+neighbors, then **derange the values** held by the target + those k
+neighbors (m = k+1 cells total) among themselves -- the multiset of values
+in the cluster is preserved, only which cell holds which value changes.
+`k=1` (a cluster of exactly 2 cells) has only one possible derangement, the
+pairwise exchange, exactly reproducing the original move.
+
+**Guaranteeing every touched cell's value actually changes is harder than
+it sounds.** A plain index derangement (`perm[i] != i` for every i) is not
+enough: if two cells in the cluster already hold the same digit, a
+derangement can still map one onto the other's slot and leave the *visible
+value* unchanged there, even though the abstract index moved.
+`core814.random_value_derangement` checks the actual values, not indices.
+
+A valid rearrangement where every value changes exists **if and only if no
+single digit occupies more than half the cluster** (`max_freq <= m // 2`,
+by pigeonhole -- otherwise there aren't enough differently-valued slots to
+send every occurrence of the majority digit to). The function first
+rejection-samples plain index derangements and checks the values (usually
+succeeds in 1-3 tries) but that alone was measured to fail on ~1% of
+genuinely feasible near-threshold cases even at 50 attempts, since a random
+permutation satisfying the *value* condition gets rare right at the
+boundary. It falls back to a **constructive** method proven correct
+whenever any valid arrangement exists at all (verified against 143,975
+randomized feasible cases, 0 failures): sort positions by value so
+same-valued positions land in one contiguous block, then rotate that sorted
+order by `ceil(m/2)` -- since a same-value block can be at most `m // 2`
+long when feasible, this rotation always pushes every position past its own
+block into a differently-valued one. Only in the genuinely infeasible case
+(one digit is the strict majority of the cluster) does the move end up a
+harmless no-op for the excess cells, since no rearrangement could ever have
+changed them anyway.
 
 ## Triple-chain penalty (`w_triple`)
 

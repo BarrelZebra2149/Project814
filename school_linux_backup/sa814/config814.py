@@ -39,7 +39,7 @@ GRID_SIZE = GRID_ROWS * GRID_COLS
 MAX_SCORE = 8142
 
 # Move operator names, in the fixed order used by core814's move dispatcher.
-MOVE_NAMES = ("copy_neighbor", "swap_adjacent", "avoid_repeat", "remap_pair", "remap_full")
+MOVE_NAMES = ("copy_neighbor", "swap_adjacent", "avoid_repeat", "remap")
 
 # Acceptance-rule / search-mode choices exposed on the CLI.
 ACCEPT_MODES = ("sa", "lahc", "dlas")
@@ -104,7 +104,11 @@ class SAConfig:
                                    # "set_random" move did the same thing under a different
                                    # name and was merged in here (0.20 + 0.20 -> 0.40),
                                    # since it was just this same idea generalized.
-    p_swap_adjacent: float = 0.20
+    p_swap_adjacent: float = 0.20  # deranges (permutes with no fixed point, so every
+                                   # touched cell's VALUE genuinely changes) the target
+                                   # cell + a random k in [1,n] of its neighbors as one
+                                   # cluster -- see core814.apply_swap_cluster. k=1
+                                   # reproduces the original pairwise-exchange exactly.
     p_avoid_repeat: float = 0.34  # force a cell away from a random subset of its neighbor
                                   # values (or copy a neighbor if they're already all
                                   # distinct) -- see core814.apply_avoid_repeat. Directly
@@ -113,9 +117,13 @@ class SAConfig:
                                   # faster score climbs from fresh random seeds once this
                                   # move and w_triple were introduced. The main two levers
                                   # to tune going forward are this and p_copy_neighbor.
-    p_remap_pair: float = 0.01   # swap 2 digits everywhere in the grid
-    p_remap_full: float = 0.05  # relabel all 10 digits at once via a random permutation
-                                 # (e.g. 0123456789 -> 2938475610) -- see core814.apply_remap_full
+    p_remap: float = 0.06  # picks k in [2,10] uniformly, then deranges just k digits
+                           # (so every one of them genuinely changes to a different
+                           # digit) -- see core814.apply_remap. Unifies two former
+                           # separate moves: remap_pair (swap exactly 2 digits, always
+                           # k=2) and remap_full (relabel all 10 via a random
+                           # permutation, k=10) were really the same idea at different
+                           # k, so their shares combine here (0.01 + 0.05 -> 0.06).
     p_edge_bias: float = 0.5     # probability a local move targets a border cell
 
     # --- temperature calibration ---------------------------------------------
@@ -144,8 +152,7 @@ class SAConfig:
             self.p_copy_neighbor,
             self.p_swap_adjacent,
             self.p_avoid_repeat,
-            self.p_remap_pair,
-            self.p_remap_full,
+            self.p_remap,
         )
 
     def cfg_hash(self) -> str:
@@ -154,8 +161,8 @@ class SAConfig:
             "accept_mode", "search_mode", "lahc_len",
             "w_score", "w_look", "w_count", "w_heur", "w_triple", "want_count",
             "look_window", "count_lo", "count_hi",
-            "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap_pair",
-            "p_remap_full", "p_edge_bias", "replicas",
+            "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap",
+            "p_edge_bias", "replicas",
         ]
         d = asdict(self)
         payload = json.dumps({k: d[k] for k in semantic_fields}, sort_keys=True)
