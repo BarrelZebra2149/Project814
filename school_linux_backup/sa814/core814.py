@@ -486,22 +486,27 @@ def _pick_edge_biased(state, edge_positions, p_edge):
 
 @njit(cache=True, inline="always")
 def apply_copy_neighbor(state, grid, dmask, edge_positions, p_edge, nbr_val_buf, params):
-    """Targets a random cell (edge-biased like the other single-cell moves),
-    gathers its valid 8-directional neighbor values, and sets the cell to
-    one of those neighbor values chosen uniformly at random -- excluding the
-    cell's own current value from consideration, so the move always
-    actually changes something. This generalizes the original "copy one
-    fixed random direction" idea (which could land out of bounds and no-op
-    near an edge, or copy a neighbor that happened to already match, also a
-    no-op) into a proper uniform sample over every valid *differing*
-    neighbor, via reservoir sampling (no extra buffer needed beyond
-    nbr_val_buf, which avoid_repeat also uses).
+    """Targets a single random cell (edge-biased) and sets ONLY that cell to
+    one value chosen from a random pool of size k in [1, n] of its valid
+    8-directional neighbor values (n = 3 at a corner, 5 on an edge, 8 in the
+    interior). Only the target cell changes -- k controls how many
+    neighbors are considered as candidates before picking one, NOT how many
+    cells get modified (unlike apply_swap_cluster / a homogenize-the-whole-
+    cluster design, which would actively grow same-digit blobs and directly
+    fight w_triple's whole purpose).
 
-    An earlier, separate "set_random" move did exactly this same thing under
-    a different name -- the two were merged since set_random was just
-    copy_neighbor generalized to the same idea. Falls back to a blind
-    uniformly-random digit != old_v only in the degenerate case where every
-    valid neighbor already shares the cell's own current value.
+    Note the resulting value's distribution is uniform over all n
+    neighbors regardless of k (for any fixed neighbor, P(chosen) =
+    P(neighbor in the k-pool) * P(picked | in pool, size k) = (k/n)*(1/k) =
+    1/n) -- k doesn't change what this move DOES today. It exists as an
+    explicit, trackable parameter so a future acceptance-rate-based learning
+    system (see README) has something to learn a preference over, even if
+    the answer for this particular move turns out to be "k doesn't matter".
+
+    This generalizes the original "copy one fixed random direction" idea
+    (which could land out of bounds and no-op near an edge) into a sample
+    over a random subset of neighbors. An earlier, separate "set_random"
+    move did a similar thing under a different name and was merged in here.
     """
     tr, tc = _pick_edge_biased(state, edge_positions, p_edge)
     old_v = grid[tr, tc]
@@ -514,23 +519,17 @@ def apply_copy_neighbor(state, grid, dmask, edge_positions, p_edge, nbr_val_buf,
             nbr_val_buf[n] = grid[nr, nc]
             n += 1
 
-    # Reservoir sample: uniformly pick one neighbor value != old_v, without
-    # needing to materialize a filtered list.
-    count = 0
-    chosen = 0
-    for t in range(n):
-        v = nbr_val_buf[t]
-        if v != old_v:
-            count += 1
-            if rng_next_bounded(state, count) == 0:
-                chosen = v
+    k = 1 + rng_next_bounded(state, n)  # uniform in [1, n]
 
-    if count > 0:
-        new_v = chosen
-    else:
-        new_v = rng_next_bounded(state, 9)
-        if new_v >= old_v:
-            new_v += 1
+    # Partial Fisher-Yates over nbr_val_buf[0..n-1]; the first k after
+    # shuffling are a uniformly random size-k pool of neighbor values.
+    for i in range(n - 1, 0, -1):
+        j = rng_next_bounded(state, i + 1)
+        tmp = nbr_val_buf[i]
+        nbr_val_buf[i] = nbr_val_buf[j]
+        nbr_val_buf[j] = tmp
+
+    new_v = nbr_val_buf[rng_next_bounded(state, k)]
 
     set_cell(grid, dmask, tr, tc, new_v)
     params[0] = tr
@@ -825,7 +824,6 @@ def apply_swap_cluster(state, grid, dmask, edge_positions, p_edge,
     undo_move knows how many entries to restore.
     """
     tr, tc = _pick_edge_biased(state, edge_positions, p_edge)
-
     cell_r_buf[0] = tr
     cell_c_buf[0] = tc
     n = 0

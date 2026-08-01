@@ -90,21 +90,25 @@ directly targets the waste that `w_triple` (below) penalizes — deliberately
 breaking up same-digit runs among a cell's neighbors before they turn into a
 3-in-a-row.
 
-`copy_neighbor` itself was upgraded with this same neighbor-awareness: rather
-than always using one fixed random direction (which can land out of bounds
-and no-op near an edge, or copy a neighbor that already matches, also a
-no-op), it samples uniformly among the cell's neighbor values that *differ*
-from its own current value (via reservoir sampling, no extra buffer needed
-beyond `avoid_repeat`'s `nbr_val_buf`), falling back to a blind random digit
-only when every neighbor already shares the current value.
+`copy_neighbor` itself was upgraded with this same neighbor-awareness: it
+targets a single cell (only that one cell ever changes -- an earlier draft
+of this move accidentally homogenized the whole target+neighbors cluster to
+one value, which would have actively *grown* same-digit blobs and fought
+`w_triple` head-on; that was caught before shipping) and picks a random pool
+of size k in `[1,n]` of its valid neighbor values, then sets the cell to one
+value drawn uniformly from that pool. Note k doesn't actually change the
+resulting distribution here (for any fixed neighbor, `P(chosen) = P(in the
+k-pool) * P(picked | pool size k) = (k/n)*(1/k) = 1/n`, independent of k) --
+it's kept as an explicit, trackable parameter for consistency with
+`avoid_repeat`/`remap`/`swap_adjacent`, not because it changes what this
+particular move does.
 
-(Both currently draw k, or the neighbor to differ from, **uniformly** over
-whatever range is available at each cell -- 1..n neighbors, n = 3/5/8 for a
-corner/edge/interior cell. A non-uniform, empirically-learned weighting over
-k (and possibly split by corner/edge/interior, since those are meaningfully
-different situations) is a natural future refinement once real
-acceptance-rate data exists to tune it from -- there's no principled way to
-guess good numbers without that data yet.)
+(All of `avoid_repeat`/`copy_neighbor`/`swap_adjacent` currently draw k
+**uniformly** over whatever range is available at each cell -- 1..n
+neighbors, n = 3/5/8 for a corner/edge/interior cell -- and `remap` draws k
+uniformly over `[2,10]`. A non-uniform, empirically-learned weighting over k
+is a natural future refinement once real acceptance-rate data exists to
+tune it from; see `--adaptive-k` below.)
 
 ### `swap_adjacent`: generalized to a k+1-cell cluster derangement
 
