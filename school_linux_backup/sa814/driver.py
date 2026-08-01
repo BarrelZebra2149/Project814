@@ -285,6 +285,21 @@ def _reseed_replica(st: dict, cfg: SAConfig, i: int, from_best: bool, kick_stren
     st["lahc_pos"][i] = 0
 
 
+def _safe_checkpoint_io(action: str, fn, *args, **kwargs) -> None:
+    """Runs a checkpoint.py I/O call, catching OSError so a missed write
+    never crashes an otherwise-healthy, possibly hours-long search. On
+    Windows, os.replace() can fail with a transient PermissionError even
+    after checkpoint.py's own short retry loop, if something (a real-time
+    antivirus scan, a PyCharm/editor indexer watching the project folder, a
+    cloud-sync client) holds an unusually long lock on the destination file.
+    Losing one write just means the next periodic/new-record attempt tries
+    again -- far better than losing the whole run."""
+    try:
+        fn(*args, **kwargs)
+    except OSError as exc:
+        print(f"[sa814] warning: {action} failed ({exc!r}); will retry next time")
+
+
 def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
     run_dir = checkpoint.run_root(base_dir, cfg.run_name)
     cfg_hash = cfg.cfg_hash()
@@ -342,13 +357,14 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
     measured_iters_per_sec = None
 
     def save_now():
-        checkpoint.save(run_dir, _to_checkpoint_state(st), cfg.to_dict(), cfg_hash)
+        _safe_checkpoint_io("checkpoint save", checkpoint.save, run_dir,
+                             _to_checkpoint_state(st), cfg.to_dict(), cfg_hash)
 
     # Ensure best.txt always reflects the best-known grid, even if this
     # session never beats it: a fresh run seeded from an already-strong
     # corpus grid (or a resumed run that stalls) would otherwise never write
     # best.txt at all, since that only happened on a *new* record before.
-    checkpoint.write_best(run_dir, st["best_grid"], st["best_score"])
+    _safe_checkpoint_io("write_best", checkpoint.write_best, run_dir, st["best_grid"], st["best_score"])
 
     print(f"[sa814] starting from best_score={st['best_score']} total_iters={st['total_iters']}")
 
@@ -403,9 +419,11 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             st["stagnant_cycles"] = 0
             print(f"[sa814] NEW RECORD: score={cur_best_score} "
                   f"(iter {st['total_iters']}, t={st['elapsed_seconds']:.1f}s)")
-            checkpoint.write_best(run_dir, st["best_grid"], st["best_score"])
-            checkpoint.append_record(run_dir, st["best_grid"], st["best_score"],
-                                      st["total_iters"], st["elapsed_seconds"])
+            _safe_checkpoint_io("write_best", checkpoint.write_best, run_dir,
+                                 st["best_grid"], st["best_score"])
+            _safe_checkpoint_io("append_record", checkpoint.append_record, run_dir,
+                                 st["best_grid"], st["best_score"],
+                                 st["total_iters"], st["elapsed_seconds"])
             save_now()
             last_checkpoint = time.perf_counter()
         else:
@@ -452,7 +470,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
                   f"mean_E={mean_e:>10.2f}  accept={accept_rate:>5.1%}  "
                   f"T=[{np.min(st['temps']):.4g},{np.max(st['temps']):.4g}]  "
                   f"{measured_iters_per_sec:>10.0f} it/s")
-            checkpoint.append_progress(run_dir, {
+            _safe_checkpoint_io("append_progress", checkpoint.append_progress, run_dir, {
                 "iter": st["total_iters"], "elapsed": round(st["elapsed_seconds"], 1),
                 "best_score": st["best_score"], "mean_energy": round(mean_e, 3),
                 "accept_rate": round(accept_rate, 4),
@@ -473,7 +491,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             print("[sa814] stopping: signal received")
             break
 
-    checkpoint.write_best(run_dir, st["best_grid"], st["best_score"])
+    _safe_checkpoint_io("write_best", checkpoint.write_best, run_dir, st["best_grid"], st["best_score"])
     save_now()
     print(f"[sa814] final: best_score={st['best_score']} total_iters={st['total_iters']} "
           f"elapsed={st['elapsed_seconds']:.1f}s -> {run_dir / 'best.txt'}")

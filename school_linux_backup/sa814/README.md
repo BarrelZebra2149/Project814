@@ -323,6 +323,21 @@ already-valid configurations between replicas, never invents a mutation).
 - `checkpoint.npz` / `checkpoint.prev.npz` — full resumable state.
 - `meta.json` — human-readable run summary + config hash.
 
+### A `[sa814] warning: ... failed (...); will retry next time` line
+
+Harmless. On Windows, `os.replace()` (used for every atomic write above) can
+fail with a transient `PermissionError` (`WinError 5`, "Access is denied")
+if something else -- a real-time antivirus scan, a PyCharm/editor indexer
+watching the project folder, a cloud-sync client like OneDrive -- happens to
+have the destination file open at that exact instant. POSIX `rename()`
+doesn't have this problem (it can replace an open file), but Windows does.
+`checkpoint.py` retries with a short backoff internally, and `driver.py`
+catches anything that still fails so it never crashes the run -- worst case,
+one checkpoint/log line is skipped and the next periodic write picks it back
+up. If you see these often, try excluding the `runs/` folder from your
+antivirus's real-time scan and from PyCharm's indexing (right-click the
+folder -> Mark Directory as -> Excluded).
+
 ## Verifying the rewrite yourself
 
 ```bash
