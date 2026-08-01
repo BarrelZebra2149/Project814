@@ -32,6 +32,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
 
 
+def _log(msg: str) -> None:
+    sys.stdout.write(msg + "\n")
+
+
 def random_grid(rng):
     return rng.integers(0, 10, size=(core.ROWS, core.COLS)).astype(np.uint8)
 
@@ -132,8 +136,8 @@ def main():
 
     rng = np.random.default_rng(args.seed)
 
-    print(f"[1/4] is_formable equivalence: {args.trials} random grids x "
-          f"{args.numbers_per_grid} random numbers ...")
+    _log(f"[1/4] is_formable equivalence: {args.trials} random grids x "
+         f"{args.numbers_per_grid} random numbers ...")
     grids = [random_grid(rng) for _ in range(args.trials // 2)]
     grids += [skewed_grid(rng, rng.integers(2, 5)) for _ in range(args.trials // 2)]
     numbers = rng.integers(1, core.UPPER, size=args.numbers_per_grid).tolist()
@@ -147,45 +151,45 @@ def main():
         else:
             unexplained.append((gi, n, orig_r, new_r, oracle_r))
 
-    print(f"  {len(mism)} disagreement(s) between original and new scorer.")
+    _log(f"  {len(mism)} disagreement(s) between original and new scorer.")
     if mism:
-        print(f"  -> {original_was_wrong} were the original's known stack-overflow bug "
-              f"(new scorer agreed with the unbounded oracle).")
+        _log(f"  -> {original_was_wrong} were the original's known stack-overflow bug "
+             f"(new scorer agreed with the unbounded oracle).")
     if unexplained:
-        print(f"  !! {len(unexplained)} UNEXPLAINED mismatch(es) (new scorer disagreed with oracle):")
+        _log(f"  !! {len(unexplained)} UNEXPLAINED mismatch(es) (new scorer disagreed with oracle):")
         for row in unexplained[:20]:
-            print(f"     grid#{row[0]} n={row[1]} orig={row[2]} new={row[3]} oracle={row[4]}")
+            _log(f"     grid#{row[0]} n={row[1]} orig={row[2]} new={row[3]} oracle={row[4]}")
 
-    print(f"\n[2/4] evaluate() equivalence (score + formable count) on "
-          f"{len(grids)} synthetic grids ...")
+    _log(f"\n[2/4] evaluate() equivalence (score + formable count) on "
+         f"{len(grids)} synthetic grids ...")
     mism2 = compare_evaluate(grids)
-    print(f"  {len(mism2)} disagreement(s).")
+    _log(f"  {len(mism2)} disagreement(s).")
     for row in mism2[:20]:
-        print(f"     grid#{row[0]} orig_score={row[1]} new_score={row[2]} "
-              f"orig_formable={row[3]} new_count={row[4]}")
+        _log(f"     grid#{row[0]} orig_score={row[1]} new_score={row[2]} "
+             f"orig_formable={row[3]} new_count={row[4]}")
 
-    print("\n[3/4] evaluate() equivalence on the real data/*.txt corpus ...")
+    _log("\n[3/4] evaluate() equivalence on the real data/*.txt corpus ...")
     corpus = load_corpus_grids()
-    print(f"  Loaded {len(corpus)} grids from data/*.txt")
+    _log(f"  Loaded {len(corpus)} grids from data/*.txt")
     mism3 = compare_evaluate(corpus) if corpus else []
-    print(f"  {len(mism3)} disagreement(s).")
+    _log(f"  {len(mism3)} disagreement(s).")
     for row in mism3[:20]:
-        print(f"     grid#{row[0]} orig_score={row[1]} new_score={row[2]} "
-              f"orig_formable={row[3]} new_count={row[4]}")
+        _log(f"     grid#{row[0]} orig_score={row[1]} new_score={row[2]} "
+             f"orig_formable={row[3]} new_count={row[4]}")
 
-    print("\n[4/4] independent oracle check (pure Python, no numba original code) "
-          "on a handful of grids ...")
+    _log("\n[4/4] independent oracle check (pure Python, no numba original code) "
+         "on a handful of grids ...")
     oracle_sample = grids[:3] + (corpus[:3] if corpus else [])
     mism4 = compare_against_oracle(oracle_sample)
-    print(f"  {len(mism4)} disagreement(s) out of {len(oracle_sample)} grids checked.")
+    _log(f"  {len(mism4)} disagreement(s) out of {len(oracle_sample)} grids checked.")
     for row in mism4[:20]:
-        print(f"     grid#{row[0]} oracle_score={row[1]} new_score={row[2]} "
-              f"oracle_formable={row[3]} new_count={row[4]}")
+        _log(f"     grid#{row[0]} oracle_score={row[1]} new_score={row[2]} "
+             f"oracle_formable={row[3]} new_count={row[4]}")
 
     ok = not unexplained and not mism2 and not mism3 and not mism4
-    print("\n" + ("PASS: new scorer is semantically equivalent to the original "
-                  "(and correct where the original silently overflowed)." if ok
-                  else "FAIL: unexplained discrepancies found -- see above."))
+    _log("\n" + ("PASS: new scorer is semantically equivalent to the original "
+                 "(and correct where the original silently overflowed)." if ok
+                 else "FAIL: unexplained discrepancies found -- see above."))
     return 0 if ok else 1
 
 
