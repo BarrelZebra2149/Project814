@@ -36,6 +36,32 @@ import numpy as np
 FORMAT_VERSION = 1
 
 
+def _replace_with_retry(src: Path, dst: Path, retries: int = 8, initial_delay: float = 0.05) -> None:
+    """os.replace() wrapper that retries on a transient PermissionError
+    (Windows WinError 5, "Access is denied"). Unlike POSIX rename(), which
+    can atomically replace a file even while another process has it open,
+    Windows refuses the replace outright if anything -- a real-time
+    antivirus scan, a PyCharm/editor indexer watching the project folder, a
+    cloud-sync client like OneDrive -- has so much as a read handle open on
+    the destination at that instant. These locks are typically released
+    within milliseconds to a couple of seconds; a short exponential backoff
+    resolves nearly all of them silently. If every retry is exhausted the
+    original PermissionError is re-raised -- the caller (checkpoint.save)
+    is expected to treat that as non-fatal too, since a missed checkpoint
+    should never be worth crashing a multi-hour search over.
+    """
+    delay = initial_delay
+    for attempt in range(retries):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == retries - 1:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 2.0)
+
+
 @dataclass
 class CheckpointState:
     grids: np.ndarray            # uint8 [R, 8, 14]
@@ -79,15 +105,6 @@ def run_root(base_dir: Path, run_name: str) -> Path:
     d = base_dir / "runs" / run_name
     d.mkdir(parents=True, exist_ok=True)
     return d
-
-
-def _atomic_write_bytes(path: Path, write_fn) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    write_fn(tmp)
-    if path.exists():
-        prev = path.with_name(path.stem + ".prev" + path.suffix)
-        os.replace(path, prev)
-    os.replace(tmp, path)
 
 
 def save(run_dir: Path, state: CheckpointState, cfg_dict: dict, cfg_hash: str) -> None:
@@ -138,8 +155,8 @@ def save(run_dir: Path, state: CheckpointState, cfg_dict: dict, cfg_hash: str) -
 
     if npz_path.exists():
         prev_path = run_dir / "checkpoint.prev.npz"
-        os.replace(npz_path, prev_path)
-    os.replace(tmp_path, npz_path)
+        _replace_with_retry(npz_path, prev_path)
+    _replace_with_retry(tmp_path, npz_path)
 
     meta = {
         "format_version": FORMAT_VERSION,
@@ -156,7 +173,7 @@ def save(run_dir: Path, state: CheckpointState, cfg_dict: dict, cfg_hash: str) -
     meta_path = run_dir / "meta.json"
     tmp_meta = meta_path.with_name(meta_path.name + ".tmp")
     tmp_meta.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp_meta, meta_path)
+    _replace_with_retry(tmp_meta, meta_path)
 
 
 def _load_npz(path: Path) -> Optional[CheckpointState]:
@@ -229,7 +246,7 @@ def write_best(run_dir: Path, grid: np.ndarray, score: int) -> None:
     tmp = path.with_name(path.name + ".tmp")
     lines = _grid_to_lines(grid)
     tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    _replace_with_retry(tmp, path)
 
 
 def append_record(run_dir: Path, grid: np.ndarray, score: int, total_iters: int, elapsed: float) -> None:
