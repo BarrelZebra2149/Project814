@@ -106,7 +106,15 @@ def _make_replica_state(R, seed_grids):
                 rng_states=rng_states, scores_arr=scores_arr, looks_arr=looks_arr,
                 counts_arr=counts_arr, energies=energies, temps=temps, hist=hist,
                 lahc_pos=lahc_pos, accept_counter=accept_counter, move_counter=move_counter,
-                swap_accept=swap_accept, swap_attempt=swap_attempt)
+                swap_accept=swap_accept, swap_attempt=swap_attempt,
+                k_weights_avoid=np.ones((2, 8)), k_weights_swap=np.ones((2, 8)),
+                k_weights_remap=np.ones(9),
+                k_attempt_avoid=np.zeros((R, 2, 8), dtype=np.int64),
+                k_accept_avoid=np.zeros((R, 2, 8), dtype=np.int64),
+                k_attempt_swap=np.zeros((R, 2, 8), dtype=np.int64),
+                k_accept_swap=np.zeros((R, 2, 8), dtype=np.int64),
+                k_attempt_remap=np.zeros((R, 9), dtype=np.int64),
+                k_accept_remap=np.zeros((R, 9), dtype=np.int64))
 
 
 def bench_sa_scaling(seconds: float):
@@ -132,7 +140,10 @@ def bench_sa_scaling(seconds: float):
                         edge_pos, move_probs, 0.5,
                         1.0, 0.002, 0.0, 0.0, 0.0, False, 400, 1000, 10000,
                         core.ACCEPT_SA, 500, 2, True,
-                        st["accept_counter"], st["move_counter"], st["swap_accept"], st["swap_attempt"])
+                        st["accept_counter"], st["move_counter"], st["swap_accept"], st["swap_attempt"],
+                        st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],
+                        st["k_attempt_avoid"], st["k_accept_avoid"], st["k_attempt_swap"], st["k_accept_swap"],
+                        st["k_attempt_remap"], st["k_accept_remap"])
 
         st["accept_counter"][:] = 0
         st["move_counter"][:] = 0
@@ -147,7 +158,10 @@ def bench_sa_scaling(seconds: float):
                             edge_pos, move_probs, 0.5,
                             1.0, 0.002, 0.0, 0.0, 0.0, False, 400, 1000, 10000,
                             core.ACCEPT_SA, iters_per_segment, 5, True,
-                            st["accept_counter"], st["move_counter"], st["swap_accept"], st["swap_attempt"])
+                            st["accept_counter"], st["move_counter"], st["swap_accept"], st["swap_attempt"],
+                            st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],
+                            st["k_attempt_avoid"], st["k_accept_avoid"], st["k_attempt_swap"], st["k_accept_swap"],
+                            st["k_attempt_remap"], st["k_accept_remap"])
             done += R * iters_per_segment * 5
         elapsed = time.perf_counter() - t0
         print(f"  threads={threads:>2d} replicas={R:>2d}: {done/elapsed:10.0f} iters/sec total "

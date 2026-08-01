@@ -59,6 +59,20 @@ class CheckpointState:
     iters_since_best: int
     elapsed_seconds: float
     stagnant_cycles: int = 0
+    # --adaptive-k state (see core814.weighted_index_choice / driver._update_k_weights).
+    # Pooled (decayed, cross-replica) attempt/accept counts and the k-selection
+    # weights derived from them; harmless placeholders (all-ones weights, zero
+    # counts) when --adaptive-k is off.
+    k_pool_attempt_avoid: np.ndarray = None   # f8 [2, 8]
+    k_pool_accept_avoid: np.ndarray = None    # f8 [2, 8]
+    k_pool_attempt_swap: np.ndarray = None    # f8 [2, 8]
+    k_pool_accept_swap: np.ndarray = None     # f8 [2, 8]
+    k_pool_attempt_remap: np.ndarray = None   # f8 [9]
+    k_pool_accept_remap: np.ndarray = None    # f8 [9]
+    k_weights_avoid: np.ndarray = None        # f8 [2, 8]
+    k_weights_swap: np.ndarray = None         # f8 [2, 8]
+    k_weights_remap: np.ndarray = None        # f8 [9]
+    iters_since_k_update: int = 0
 
 
 def run_root(base_dir: Path, run_name: str) -> Path:
@@ -107,6 +121,16 @@ def save(run_dir: Path, state: CheckpointState, cfg_dict: dict, cfg_hash: str) -
             iters_since_best=np.int64(state.iters_since_best),
             elapsed_seconds=np.float64(state.elapsed_seconds),
             stagnant_cycles=np.int64(state.stagnant_cycles),
+            k_pool_attempt_avoid=state.k_pool_attempt_avoid,
+            k_pool_accept_avoid=state.k_pool_accept_avoid,
+            k_pool_attempt_swap=state.k_pool_attempt_swap,
+            k_pool_accept_swap=state.k_pool_accept_swap,
+            k_pool_attempt_remap=state.k_pool_attempt_remap,
+            k_pool_accept_remap=state.k_pool_accept_remap,
+            k_weights_avoid=state.k_weights_avoid,
+            k_weights_swap=state.k_weights_swap,
+            k_weights_remap=state.k_weights_remap,
+            iters_since_k_update=np.int64(state.iters_since_k_update),
             format_version=np.int64(FORMAT_VERSION),
         )
         f.flush()
@@ -162,6 +186,16 @@ def _load_npz(path: Path) -> Optional[CheckpointState]:
                 iters_since_best=int(z["iters_since_best"]),
                 elapsed_seconds=float(z["elapsed_seconds"]),
                 stagnant_cycles=int(z["stagnant_cycles"]) if "stagnant_cycles" in z else 0,
+                k_pool_attempt_avoid=z["k_pool_attempt_avoid"] if "k_pool_attempt_avoid" in z else np.zeros((2, 8)),
+                k_pool_accept_avoid=z["k_pool_accept_avoid"] if "k_pool_accept_avoid" in z else np.zeros((2, 8)),
+                k_pool_attempt_swap=z["k_pool_attempt_swap"] if "k_pool_attempt_swap" in z else np.zeros((2, 8)),
+                k_pool_accept_swap=z["k_pool_accept_swap"] if "k_pool_accept_swap" in z else np.zeros((2, 8)),
+                k_pool_attempt_remap=z["k_pool_attempt_remap"] if "k_pool_attempt_remap" in z else np.zeros(9),
+                k_pool_accept_remap=z["k_pool_accept_remap"] if "k_pool_accept_remap" in z else np.zeros(9),
+                k_weights_avoid=z["k_weights_avoid"] if "k_weights_avoid" in z else np.ones((2, 8)),
+                k_weights_swap=z["k_weights_swap"] if "k_weights_swap" in z else np.ones((2, 8)),
+                k_weights_remap=z["k_weights_remap"] if "k_weights_remap" in z else np.ones(9),
+                iters_since_k_update=int(z["iters_since_k_update"]) if "iters_since_k_update" in z else 0,
             )
     except Exception as exc:  # noqa: BLE001 - corrupt/partial file, fall back
         print(f"[checkpoint] failed to load {path}: {exc!r}")

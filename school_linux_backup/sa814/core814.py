@@ -446,6 +446,31 @@ def rng_next_bounded(state, bound):
     return np.int64(rng_next_u64(state) % np.uint64(bound))
 
 
+@njit(cache=True, inline="always")
+def weighted_index_choice(state, weights, n):
+    """Draws an index in [0, n-1] from weights[0..n-1], renormalized over
+    just that range (any entries at index >= n are ignored). Falls back to
+    a uniform draw if the weights sum to ~0 (shouldn't happen once
+    initialized to all-ones, but defensive). This is the single sampling
+    path used for every k-selection in the solver: when all weights are
+    equal (the default), it's exactly a uniform draw; --adaptive-k changes
+    behavior purely by changing what's in `weights` between blocks, with no
+    separate code path needed.
+    """
+    total = 0.0
+    for i in range(n):
+        total += weights[i]
+    if total <= 1e-12:
+        return rng_next_bounded(state, n)
+    r = rng_next_double(state) * total
+    cum = 0.0
+    for i in range(n - 1):
+        cum += weights[i]
+        if r < cum:
+            return i
+    return n - 1
+
+
 def splitmix64_stream(seed, count):
     """Python-side (non-jit) generator of `count` well-mixed uint64 words from a
     single integer seed, used to initialize replica RNG states deterministically
@@ -539,7 +564,7 @@ def apply_copy_neighbor(state, grid, dmask, edge_positions, p_edge, nbr_val_buf,
 
 @njit(cache=True, inline="always")
 def apply_avoid_repeat(state, grid, dmask, edge_positions, p_edge,
-                       nbr_val_buf, flag_buf, allowed_buf, params):
+                       nbr_val_buf, flag_buf, allowed_buf, k_weights, params):
     """Targets a random cell (edge-biased like the other single-cell moves)
     and looks at its valid 8-directional neighbors (3 at a corner, 5 on an
     edge, 8 in the interior -- always at least 3).
@@ -547,15 +572,20 @@ def apply_avoid_repeat(state, grid, dmask, edge_positions, p_edge,
     If those neighbor values are already all pairwise distinct (no repeated
     digit among them to break up), there's nothing useful to force, so this
     falls back to simply copying a uniformly random neighbor's value (like
-    MOVE_COPY_NEIGHBOR).
+    MOVE_COPY_NEIGHBOR). No k is drawn in this fallback case; params[3] is
+    set to -1 to signal "not applicable" to the --adaptive-k tracker.
 
-    Otherwise, a random subset of size k in [1, n_neighbors] of the neighbor
-    values is sampled without replacement, and the new value is forced to be
-    none of them -- deliberately breaking up same-digit runs among the
-    neighbors. This directly targets what feeds count_triple_chains: since a
-    walk may revisit cells, only two same-digit cells are ever needed to form
-    an arbitrarily long run of that digit, so a third one in a straight line
-    is pure waste.
+    Otherwise, a subset of size k in [1, n_neighbors] of the neighbor values
+    is sampled without replacement (k drawn via weighted_index_choice from
+    k_weights[postype], postype = 0 for an interior cell (n=8), 1 for a
+    border cell (n=3 or 5); all-ones weights, the default, make this a
+    uniform draw), and the new value is forced to be none of them --
+    deliberately breaking up same-digit runs among the neighbors. This
+    directly targets what feeds count_triple_chains: since a walk may
+    revisit cells, only two same-digit cells are ever needed to form an
+    arbitrarily long run of that digit, so a third one in a straight line
+    is pure waste. params[3]/params[4] are set to the k index (k-1) and
+    postype used, for the caller to record into --adaptive-k's counters.
 
     Undo is identical to MOVE_COPY_NEIGHBOR (single-cell revert via params),
     so this needs no dedicated undo function.
@@ -583,8 +613,12 @@ def apply_avoid_repeat(state, grid, dmask, edge_positions, p_edge,
 
     if all_distinct:
         new_v = nbr_val_buf[rng_next_bounded(state, n)]
+        params[3] = -1
+        params[4] = -1
     else:
-        k = 1 + rng_next_bounded(state, n)
+        postype = 0 if n == 8 else 1
+        k_idx = weighted_index_choice(state, k_weights[postype], n)
+        k = k_idx + 1
         # Partial Fisher-Yates shuffle of nbr_val_buf[0..n-1]; the first k
         # slots afterward are a uniformly random size-k subset without
         # replacement.
@@ -604,6 +638,8 @@ def apply_avoid_repeat(state, grid, dmask, edge_positions, p_edge,
                 allowed_count += 1
         # allowed_count >= 10 - n >= 2 always, since n <= 8.
         new_v = allowed_buf[rng_next_bounded(state, allowed_count)]
+        params[3] = k_idx
+        params[4] = postype
 
     set_cell(grid, dmask, tr, tc, new_v)
     params[0] = tr
@@ -731,13 +767,15 @@ def apply_remap_full(grid, dmask, perm, dmask_scratch):
 
 
 @njit(cache=True, inline="always")
-def apply_remap(state, grid, dmask, perm_buf, subset_buf, derange_buf, dmask_scratch):
+def apply_remap(state, grid, dmask, perm_buf, subset_buf, derange_buf, dmask_scratch,
+                 k_weights, params):
     """Generalizes the old remap_pair (swap exactly 2 digits) and remap_full
     (relabel all 10 digits via a random permutation) into one parameterized
-    move: pick k in [2, 10] uniformly at random, choose k distinct digits,
-    and derange (permute with no fixed points, so every chosen digit
-    actually changes) just those k -- the other (10 - k) digits are left
-    untouched.
+    move: pick k in [2, 10] (drawn via weighted_index_choice from
+    k_weights, an array of 9 entries for k=2..10; all-ones weights, the
+    default, make this a uniform draw), choose k distinct digits, and
+    derange (permute with no fixed points, so every chosen digit actually
+    changes) just those k -- the other (10 - k) digits are left untouched.
 
     k=2 always produces a genuine digit swap (the only derangement of 2
     elements is the transposition) -- exactly the old remap_pair's
@@ -758,8 +796,10 @@ def apply_remap(state, grid, dmask, perm_buf, subset_buf, derange_buf, dmask_scr
     undo record, so it must survive unmodified until undo_move is called.
     subset_buf (int64[10]) and derange_buf (int64[>=10]) are pure scratch.
     dmask_scratch (int64[10, ROWS]) is apply_remap_full's usual scratch.
+    params[3] is set to the k index (k-2), for --adaptive-k's counters.
     """
-    k = 2 + rng_next_bounded(state, 9)  # uniform in [2, 10]
+    k_idx = weighted_index_choice(state, k_weights, 9)
+    k = k_idx + 2  # k in [2, 10]
 
     for d in range(10):
         subset_buf[d] = d
@@ -778,6 +818,7 @@ def apply_remap(state, grid, dmask, perm_buf, subset_buf, derange_buf, dmask_scr
         perm_buf[subset_buf[i]] = subset_buf[derange_buf[i]]
 
     apply_remap_full(grid, dmask, perm_buf, dmask_scratch)
+    params[3] = k_idx
 
 
 @njit(cache=True, inline="always")
@@ -788,15 +829,15 @@ def invert_perm(perm, inv_out):
 
 @njit(cache=True, inline="always")
 def apply_swap_cluster(state, grid, dmask, edge_positions, p_edge,
-                        cell_r_buf, cell_c_buf, orig_val_buf, derange_buf, sort_idx_buf, params):
+                        cell_r_buf, cell_c_buf, orig_val_buf, derange_buf, sort_idx_buf,
+                        k_weights, params):
     """Generalizes the old swap_adjacent (exchange values between exactly 2
     cells) into a parameterized move: target a random cell (edge-biased),
-    pick a random subset of size k in [1, n] of its valid 8-directional
-    neighbors (n = 3 at a corner, 5 on an edge, 8 in the interior -- k is
-    drawn uniformly over whatever n is actually available at this cell; a
-    fixed, separately-learned k-weighting by position type, and by k in
-    general, is a natural future refinement once real acceptance-rate data
-    exists to tune it from), and derange the VALUES currently held by the
+    pick a subset of size k in [1, n] of its valid 8-directional neighbors
+    (n = 3 at a corner, 5 on an edge, 8 in the interior; k drawn via
+    weighted_index_choice from k_weights[postype], postype = 0 for interior
+    (n=8), 1 for border (n=3 or 5) -- all-ones weights, the default, make
+    this a uniform draw), and derange the VALUES currently held by the
     target + those k neighbors (m = k+1 cells total) among themselves. The
     multiset of values in that cluster is preserved -- only which cell
     holds which value changes.
@@ -821,7 +862,8 @@ def apply_swap_cluster(state, grid, dmask, edge_positions, p_edge,
     positions, no permutation inversion needed). derange_buf and
     sort_idx_buf (int64[>=MAX_CLUSTER] each) are pure scratch for
     random_value_derangement. params[0] is set to the cluster size m so
-    undo_move knows how many entries to restore.
+    undo_move knows how many entries to restore; params[3]/params[4] are
+    set to the k index (k-1) and postype used, for --adaptive-k's counters.
     """
     tr, tc = _pick_edge_biased(state, edge_positions, p_edge)
     cell_r_buf[0] = tr
@@ -835,7 +877,9 @@ def apply_swap_cluster(state, grid, dmask, edge_positions, p_edge,
             cell_c_buf[1 + n] = nc
             n += 1
 
-    k = 1 + rng_next_bounded(state, n)  # uniform in [1, n]
+    postype = 0 if n == 8 else 1
+    k_idx = weighted_index_choice(state, k_weights[postype], n)
+    k = k_idx + 1
 
     # Partial Fisher-Yates over the n neighbor slots [1..n]; the first k
     # after shuffling are a uniformly random size-k subset without
@@ -859,13 +903,16 @@ def apply_swap_cluster(state, grid, dmask, edge_positions, p_edge,
         set_cell(grid, dmask, cell_r_buf[i], cell_c_buf[i], orig_val_buf[derange_buf[i]])
 
     params[0] = m
+    params[3] = k_idx
+    params[4] = postype
 
 
 @njit(cache=True)
 def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
                nbr_val_buf, flag_buf, allowed_buf, params,
                perm_buf, dmask_scratch,
-               cell_r_buf, cell_c_buf, orig_val_buf):
+               cell_r_buf, cell_c_buf, orig_val_buf,
+               k_weights_avoid, k_weights_swap, k_weights_remap):
     """Applies one random move in-place. Fills `params` (int64[5]) with enough
     information for undo_move to reverse it exactly, and returns the move id.
 
@@ -881,7 +928,20 @@ def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
     orig_val_buf (int64[MAX_CLUSTER] each) are used only by
     MOVE_SWAP_ADJACENT, doubling as its undo record too (all must survive
     unmodified until undo_move is called, which it does since undo always
-    happens before the next apply_move on this replica)."""
+    happens before the next apply_move on this replica).
+
+    k_weights_avoid/k_weights_swap (float64[2, 8]) and k_weights_remap
+    (float64[9]) drive each move's internal k-selection (see
+    weighted_index_choice); all-ones (the default) makes every k draw
+    uniform, matching the original behavior exactly. --adaptive-k changes
+    these arrays between blocks based on observed accept rates; this
+    function itself is unaware of whether that's happening. params[3] and
+    params[4] are set by MOVE_AVOID_REPEAT/MOVE_SWAP_ADJACENT/MOVE_REMAP to
+    the k index and (where applicable) position-type used, for the caller
+    to feed into --adaptive-k's counters; MOVE_COPY_NEIGHBOR isn't tracked
+    (its k provably doesn't affect the outcome, so there's nothing to
+    learn) and resets them to -1.
+    """
     r = rng_next_double(state)
     cum = 0.0
     chosen = move_probs.shape[0] - 1
@@ -893,20 +953,24 @@ def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
 
     if chosen == MOVE_COPY_NEIGHBOR:
         apply_copy_neighbor(state, grid, dmask, edge_positions, p_edge, nbr_val_buf, params)
+        params[3] = -1
+        params[4] = -1
         return MOVE_COPY_NEIGHBOR
 
     if chosen == MOVE_SWAP_ADJACENT:
         apply_swap_cluster(state, grid, dmask, edge_positions, p_edge,
-                            cell_r_buf, cell_c_buf, orig_val_buf, allowed_buf, flag_buf, params)
+                            cell_r_buf, cell_c_buf, orig_val_buf, allowed_buf, flag_buf,
+                            k_weights_swap, params)
         return MOVE_SWAP_ADJACENT
 
     if chosen == MOVE_AVOID_REPEAT:
         apply_avoid_repeat(state, grid, dmask, edge_positions, p_edge,
-                           nbr_val_buf, flag_buf, allowed_buf, params)
+                           nbr_val_buf, flag_buf, allowed_buf, k_weights_avoid, params)
         return MOVE_AVOID_REPEAT
 
     # MOVE_REMAP
-    apply_remap(state, grid, dmask, perm_buf, flag_buf, allowed_buf, dmask_scratch)
+    apply_remap(state, grid, dmask, perm_buf, flag_buf, allowed_buf, dmask_scratch,
+                k_weights_remap, params)
     return MOVE_REMAP
 
 
@@ -978,7 +1042,10 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
                  edge_positions, move_probs, p_edge,
                  w_score, w_look, w_count, w_heur, w_triple,
                  want_count, look_window, count_lo, count_hi,
-                 accept_mode, iters, accept_counter, move_counter):
+                 accept_mode, iters, accept_counter, move_counter,
+                 k_weights_avoid, k_weights_swap, k_weights_remap,
+                 k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
+                 k_attempt_remap, k_accept_remap):
     grid = grids[i]
     dmask = dmasks[i]
     stamp = stamps[i]
@@ -986,6 +1053,13 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
     digit_buf = digit_bufs[i]
     my_hist = hist[i]
     lahc_len = my_hist.shape[0]
+
+    my_k_attempt_avoid = k_attempt_avoid[i]
+    my_k_accept_avoid = k_accept_avoid[i]
+    my_k_attempt_swap = k_attempt_swap[i]
+    my_k_accept_swap = k_accept_swap[i]
+    my_k_attempt_remap = k_attempt_remap[i]
+    my_k_accept_remap = k_accept_remap[i]
 
     T = temps[i]
     curE = energies[i]
@@ -1008,7 +1082,8 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
         move_id = apply_move(rng_state, grid, dmask, edge_positions, move_probs, p_edge,
                               nbr_val_buf, flag_buf, allowed_buf, params,
                               perm_buf, dmask_scratch,
-                              cell_r_buf, cell_c_buf, orig_val_buf)
+                              cell_r_buf, cell_c_buf, orig_val_buf,
+                              k_weights_avoid, k_weights_swap, k_weights_remap)
 
         score, look, count = evaluate(dmask, stamp, gen, look_window, count_lo, count_hi,
                                        want_count, digit_buf)
@@ -1063,6 +1138,27 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
 
         move_counter[i, move_id] += 1
 
+        # --adaptive-k bookkeeping: only MOVE_AVOID_REPEAT/MOVE_SWAP_ADJACENT/
+        # MOVE_REMAP report a real (k_idx, postype) via params[3]/params[4]
+        # (MOVE_COPY_NEIGHBOR's k provably doesn't affect its outcome, so it
+        # isn't tracked; MOVE_AVOID_REPEAT's all-distinct fallback also skips
+        # a k draw and reports -1). These counters accumulate every call
+        # regardless of whether --adaptive-k is enabled -- harmless when it
+        # isn't, since driver.py simply never reads them in that case.
+        if move_id == MOVE_AVOID_REPEAT:
+            if params[3] >= 0:
+                my_k_attempt_avoid[params[4], params[3]] += 1
+                if accept:
+                    my_k_accept_avoid[params[4], params[3]] += 1
+        elif move_id == MOVE_SWAP_ADJACENT:
+            my_k_attempt_swap[params[4], params[3]] += 1
+            if accept:
+                my_k_accept_swap[params[4], params[3]] += 1
+        elif move_id == MOVE_REMAP:
+            my_k_attempt_remap[params[3]] += 1
+            if accept:
+                my_k_accept_remap[params[3]] += 1
+
     gens[i] = gen
     lahc_pos[i] = pos
 
@@ -1108,9 +1204,20 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
               w_score, w_look, w_count, w_heur, w_triple,
               want_count, look_window, count_lo, count_hi,
               accept_mode, iters_per_segment, n_segments, do_swaps,
-              accept_counter, move_counter, swap_accept_counter, swap_attempt_counter):
+              accept_counter, move_counter, swap_accept_counter, swap_attempt_counter,
+              k_weights_avoid, k_weights_swap, k_weights_remap,
+              k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
+              k_attempt_remap, k_accept_remap):
     """Runs n_segments * iters_per_segment SA iterations per replica, attempting
-    a replica-exchange swap sweep between segments (if do_swaps)."""
+    a replica-exchange swap sweep between segments (if do_swaps).
+
+    k_weights_avoid/k_weights_swap (float64[2, 8]) and k_weights_remap
+    (float64[9]) are shared (not per-replica) k-selection weights -- see
+    apply_move. k_attempt_*/k_accept_* are per-replica counters (shape
+    [R, 2, 8] or [R, 9]) that --adaptive-k pools across replicas between
+    blocks to update the shared weights; harmless bookkeeping when
+    --adaptive-k is off (driver.py just never reads them).
+    """
     R = grids.shape[0]
     for _seg in range(n_segments):
         for i in prange(R):
@@ -1120,7 +1227,10 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
                         edge_positions, move_probs, p_edge,
                         w_score, w_look, w_count, w_heur, w_triple,
                         want_count, look_window, count_lo, count_hi,
-                        accept_mode, iters_per_segment, accept_counter, move_counter)
+                        accept_mode, iters_per_segment, accept_counter, move_counter,
+                        k_weights_avoid, k_weights_swap, k_weights_remap,
+                        k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
+                        k_attempt_remap, k_accept_remap)
         if do_swaps and R > 1:
             _attempt_swaps(grids, dmasks, energies, scores_arr, looks_arr, counts_arr,
                            hist, lahc_pos, temps, swap_rng_state,
@@ -1151,12 +1261,19 @@ def _calibrate_samples(grid, dmask, stamp, gen0, rng_state, edge_positions, move
     cell_r_buf = np.zeros(MAX_CLUSTER, dtype=np.int64)
     cell_c_buf = np.zeros(MAX_CLUSTER, dtype=np.int64)
     orig_val_buf = np.zeros(MAX_CLUSTER, dtype=np.int64)
+    # Calibration always uses uniform k-selection (all-ones weights), even if
+    # --adaptive-k is enabled: this only ever runs once, on a genuinely fresh
+    # start before any learning has happened, so uniform is exactly correct.
+    k_weights_avoid = np.ones((2, 8), dtype=np.float64)
+    k_weights_swap = np.ones((2, 8), dtype=np.float64)
+    k_weights_remap = np.ones(9, dtype=np.float64)
     for k in range(n_samples):
         gen += 1
         move_id = apply_move(rng_state, grid, dmask, edge_positions, move_probs, p_edge,
                               nbr_val_buf, flag_buf, allowed_buf, params,
                               perm_buf, dmask_scratch,
-                              cell_r_buf, cell_c_buf, orig_val_buf)
+                              cell_r_buf, cell_c_buf, orig_val_buf,
+                              k_weights_avoid, k_weights_swap, k_weights_remap)
         score, look, count = evaluate(dmask, stamp, gen, look_window, count_lo, count_hi,
                                        want_count, digit_buf)
         heur = heur_chain_variance(grid) if w_heur != 0.0 else 0.0

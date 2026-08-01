@@ -126,6 +126,24 @@ class SAConfig:
                            # k, so their shares combine here (0.01 + 0.05 -> 0.06).
     p_edge_bias: float = 0.5     # probability a local move targets a border cell
 
+    # --- adaptive k-distribution learning (opt-in) ----------------------------
+    # avoid_repeat/swap_adjacent/remap each draw a k (how many neighbors, or
+    # digits, to touch) uniformly by default. If enabled, k is instead drawn
+    # from weights learned from observed accept rates, pooled across all
+    # replicas and updated periodically -- see core814.weighted_index_choice
+    # and driver._update_k_weights. copy_neighbor is excluded: its k provably
+    # doesn't affect the outcome (see apply_copy_neighbor), so there is
+    # nothing to learn there. Off by default; enable with --adaptive-k.
+    adaptive_k: bool = False
+    adaptive_k_update_iters: int = 50_000   # total iters between reweighting passes
+    adaptive_k_smoothing: float = 2.0       # Laplace smoothing added to accept/attempt
+                                             # before computing a rate, so a k that
+                                             # hasn't been tried much yet (or got
+                                             # unlucky early) isn't zeroed out
+    adaptive_k_decay: float = 0.9           # decay applied to old pooled counts at each
+                                             # reweighting, so learning can still adapt
+                                             # if the "right" k shifts over a long run
+
     # --- temperature calibration ---------------------------------------------
     cal_samples: int = 2000
     p_hot: float = 0.5           # target acceptance rate at T0
@@ -163,6 +181,7 @@ class SAConfig:
             "look_window", "count_lo", "count_hi",
             "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap",
             "p_edge_bias", "replicas",
+            "adaptive_k", "adaptive_k_update_iters", "adaptive_k_smoothing", "adaptive_k_decay",
         ]
         d = asdict(self)
         payload = json.dumps({k: d[k] for k in semantic_fields}, sort_keys=True)
@@ -268,6 +287,14 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
     p.add_argument("--reheat", type=float, default=None)
     p.add_argument("--stagnation-iters", type=int, default=None)
     p.add_argument("--cycle-iters", type=int, default=None)
+
+    p.add_argument("--adaptive-k", action="store_true", default=None,
+                    help="Learn per-k acceptance-rate weights for avoid_repeat/"
+                         "swap_adjacent/remap's k-selection from this run's own "
+                         "observed data, instead of drawing k uniformly.")
+    p.add_argument("--adaptive-k-update-iters", type=int, default=None)
+    p.add_argument("--adaptive-k-smoothing", type=float, default=None)
+    p.add_argument("--adaptive-k-decay", type=float, default=None)
     return p
 
 

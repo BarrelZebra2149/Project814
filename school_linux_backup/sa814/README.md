@@ -176,6 +176,55 @@ and is never seriously explored): `200 * 0.005 = 1.0`, so even that can only
 just brush a single real score point, never flip it outright. `avoid_repeat`
 is the move most directly aimed at reducing this count during the search.
 
+## `--adaptive-k`: learning the k-distribution from observed data
+
+`avoid_repeat`, `swap_adjacent`, and `remap` each draw a k (how many
+neighbors, or digits, to touch) uniformly by default. `--adaptive-k` instead
+learns a per-k weighting from this run's own observed accept rates, so the
+search finds out for itself which k values tend to pay off rather than
+treating them all as equally likely to help.
+
+**What's tracked, and why not everything:** `copy_neighbor` is excluded --
+its k provably doesn't change the resulting value distribution (see
+`apply_copy_neighbor`'s docstring), so there's nothing to learn there.
+`avoid_repeat` and `swap_adjacent` are tracked separately for **interior**
+cells (8 neighbors) vs **border** cells (corner or edge, 3 or 5 neighbors)
+-- two groups, not three, so a corner and an edge cell pool their statistics
+together even though their actual neighbor counts differ (`weighted_index_
+choice` just renormalizes over whichever range is valid at each cell).
+`remap`'s k isn't position-based at all (it's about how many *digits* get
+touched), so it has one shared distribution.
+
+**How it works:** every replica accumulates `(k, accept?)` outcomes into
+per-(move, position-type, k) counters as it runs (`core814._anneal_one`).
+Every `--adaptive-k-update-iters` (default 50,000) total iterations,
+`driver._update_k_weights` sums those counters across all replicas, folds
+them into a decayed running total (`--adaptive-k-decay`, default 0.9, so
+old evidence gradually fades and the learned preference can still shift
+over a long run), and recomputes each k's weight as a Laplace-smoothed
+acceptance rate: `(accepted + smoothing) / (attempted + 2*smoothing)`
+(`--adaptive-k-smoothing`, default 2.0, so a k that hasn't been tried much
+yet -- or got unlucky early -- isn't zeroed out). The updated weights feed
+`core814.weighted_index_choice`, the single sampling path used for every
+k-draw in the solver: with all-ones weights (the default, `--adaptive-k`
+off) it's mathematically identical to a uniform draw, so enabling the flag
+changes *only* what's in the weight arrays, not any code path.
+
+This state (pooled counters + current weights) is included in the
+checkpoint, so a resumed run picks up learning where it left off rather
+than starting over.
+
+```bash
+python win_score_first.py --adaptive-k
+# tune the update cadence / smoothing / decay if you want:
+python win_score_first.py --adaptive-k --adaptive-k-update-iters 20000 --adaptive-k-smoothing 1.0 --adaptive-k-decay 0.95
+```
+
+Enabling or disabling `--adaptive-k` (or changing its hyperparameters)
+changes `cfg_hash`, so resuming a checkpoint saved under different
+`--adaptive-k` settings reseeds fresh from its best grid rather than
+silently mixing old and new k-statistics.
+
 ## Layout
 
 | File | Role |
@@ -222,8 +271,9 @@ python win_score_first.py --fresh --no-seed --run-name from_scratch
 ```
 
 Useful flags: `--replicas N`, `--accept {sa,lahc,dlas}`, `--mode {pt,anneal}`,
-`--target-score N`, `--iters N`, `--seed-file path.txt`, `--no-seed`. Run
-`python win_score_first.py --help` for the full list.
+`--target-score N`, `--iters N`, `--seed-file path.txt`, `--no-seed`,
+`--adaptive-k` (see below). Run `python win_score_first.py --help` for the
+full list.
 
 ### First-run compile cost
 
