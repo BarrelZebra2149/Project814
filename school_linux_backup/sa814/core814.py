@@ -1042,7 +1042,7 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
                  edge_positions, move_probs, p_edge,
                  w_score, w_look, w_count, w_heur, w_triple,
                  want_count, look_window, count_lo, count_hi,
-                 accept_mode, iters, accept_counter, move_counter, move_accept_counter,
+                 accept_mode, iters, max_worsen, accept_counter, move_counter, move_accept_counter,
                  k_weights_avoid, k_weights_swap, k_weights_remap,
                  k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
                  k_attempt_remap, k_accept_remap):
@@ -1104,7 +1104,15 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
                 accept = rng_next_double(rng_state) < math.exp(-dE / T)
         elif accept_mode == ACCEPT_LAHC:
             v = pos % lahc_len
-            if newE <= my_hist[v] or newE <= curE:
+            bar = my_hist[v]
+            # Hard ceiling: a move that breaks the grid by thousands of
+            # score points must never be accepted just because history has
+            # drifted that high too. Without this, one such accept is
+            # irrecoverable on score's cliff landscape -- see max_worsening
+            # in config814.py for the measured evidence.
+            if max_worsen > 0.0 and bar > curE + max_worsen:
+                bar = curE + max_worsen
+            if newE <= bar or newE <= curE:
                 accept = True
             candidateE = newE if accept else curE
             if candidateE < my_hist[v]:
@@ -1116,6 +1124,8 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
             for h in range(1, lahc_len):
                 if my_hist[h] > hmax:
                     hmax = my_hist[h]
+            if max_worsen > 0.0 and hmax > curE + max_worsen:
+                hmax = curE + max_worsen
             prvF = curE
             if newE == curE or newE < hmax:
                 accept = True
@@ -1205,7 +1215,7 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
               edge_positions, move_probs, p_edge,
               w_score, w_look, w_count, w_heur, w_triple,
               want_count, look_window, count_lo, count_hi,
-              accept_mode, iters_per_segment, n_segments, do_swaps,
+              accept_mode, iters_per_segment, n_segments, do_swaps, max_worsen,
               accept_counter, move_counter, move_accept_counter, swap_accept_counter, swap_attempt_counter,
               k_weights_avoid, k_weights_swap, k_weights_remap,
               k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
@@ -1229,7 +1239,7 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
                         edge_positions, move_probs, p_edge,
                         w_score, w_look, w_count, w_heur, w_triple,
                         want_count, look_window, count_lo, count_hi,
-                        accept_mode, iters_per_segment, accept_counter, move_counter, move_accept_counter,
+                        accept_mode, iters_per_segment, max_worsen, accept_counter, move_counter, move_accept_counter,
                         k_weights_avoid, k_weights_swap, k_weights_remap,
                         k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
                         k_attempt_remap, k_accept_remap)

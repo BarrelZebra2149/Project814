@@ -202,6 +202,39 @@ class SAConfig:
                                      # anchoring alone, since it's a second, compounding
                                      # diversity mechanism
 
+    # --- DLAS trapdoor prevention ------------------------------------------------
+    # The DLAS accept rule (core814._anneal_one) is `accept if newE == curE or
+    # newE < hmax`, where hmax = max(history). On dlas.hpp's original smooth
+    # landscape that's a self-tightening bar: the chain descends, hmax follows
+    # it down. On 814-2's cliff (breaking one small number collapses score by
+    # thousands) it's a one-way ratchet instead: one catastrophic accept fills
+    # history with terrible energies, hmax explodes, and nearly every
+    # subsequent proposal satisfies newE < hmax -- an unbiased random walk
+    # (confirmed empirically: accept rate sat at a flat 40-45% for the ENTIRE
+    # duration of every real run analyzed, never declining as score rose).
+    # Phase 1's anchoring recovers from this after the fact; these two fields
+    # attack the mechanism that causes it.
+    max_worsening: float = 25.0   # hard ceiling on hmax: never more than curE +
+                                   # max_worsening above the current energy, no matter
+                                   # how bad history has become. 0.0 disables. Blocks
+                                   # the catastrophic (score-in-the-thousands) accepts
+                                   # outright rather than just recovering from them.
+                                   # Known side effect: `remap` (a global digit
+                                   # relabeling) will go effectively dead above a few
+                                   # hundred score points, since it almost always
+                                   # collapses a high-scoring grid outright -- this is
+                                   # not a bug to work around, it's max_worsening
+                                   # correctly recognizing remap can't safely fire there.
+    hist_reset_band: float = 2.0  # every flat history fill (fresh start, resume,
+                                   # reheat/anchor restore) sets hist[:] = energy +
+                                   # hist_reset_band instead of exactly energy. At
+                                   # exactly energy, hmax == curE right after a reset,
+                                   # which makes DLAS accept ONLY strict improvements --
+                                   # pure greedy, unable to move at all once stuck. A
+                                   # small band lets the replica drift slightly (in
+                                   # score-point-equivalent units, since w_score=1.0)
+                                   # instead of freezing solid.
+
     # --- parallel tempering ----------------------------------------------------
     swap_interval: int = 2000    # iterations between adjacent-replica swap attempts
 
@@ -230,6 +263,7 @@ class SAConfig:
             "p_edge_bias", "replicas",
             "adaptive_k", "adaptive_k_update_iters", "adaptive_k_smoothing", "adaptive_k_decay",
             "anchor_enabled", "anchor_margin", "anchor_kick", "elite_size", "elite_resample_iters",
+            "max_worsening", "hist_reset_band",
         ]
         d = asdict(self)
         payload = json.dumps({k: d[k] for k in semantic_fields}, sort_keys=True)
@@ -352,6 +386,12 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
     p.add_argument("--anchor-kick", type=int, default=None)
     p.add_argument("--elite-size", type=int, default=None)
     p.add_argument("--elite-resample-iters", type=int, default=None)
+
+    p.add_argument("--max-worsening", type=float, default=None,
+                    help="Hard ceiling on how bad DLAS/LAHC's history-derived accept "
+                         "bar can get; 0.0 disables. Blocks catastrophic collapse-by-"
+                         "thousands accepts outright.")
+    p.add_argument("--hist-reset-band", type=float, default=None)
 
     p.add_argument("--adaptive-k", action="store_true", default=None,
                     help="Learn per-k acceptance-rate weights for avoid_repeat/"

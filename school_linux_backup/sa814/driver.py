@@ -116,7 +116,11 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
 
     hist = np.zeros((R, cfg.lahc_len), dtype=np.float64)
     for i in range(R):
-        hist[i, :] = energies[i]
+        # + hist_reset_band, not exactly energies[i]: at exactly the
+        # current energy, hmax == curE right after this fill, so DLAS
+        # would accept only strict improvements (pure greedy, can't move)
+        # until history re-diversifies. See config814.py's docstring.
+        hist[i, :] = energies[i] + cfg.hist_reset_band
     lahc_pos = np.zeros(R, dtype=np.int64)
     cycle_pos = np.zeros(R, dtype=np.int64)
     accept_counter = np.zeros(R, dtype=np.int64)
@@ -254,7 +258,7 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
     hist = np.empty((R, lahc_len), dtype=np.float64)
     hist[:n_common] = ck.hist[:n_common]
     for i in range(n_common, R):
-        hist[i, :] = energies[i]
+        hist[i, :] = energies[i] + cfg.hist_reset_band
     lahc_pos = np.zeros(R, dtype=np.int64)
     lahc_pos[:n_common] = ck.lahc_pos[:n_common]
     cycle_pos = np.zeros(R, dtype=np.int64)
@@ -373,7 +377,7 @@ def _restore_replica(st: dict, cfg: SAConfig, i: int, src_grid, kick_strength: i
                              cfg.count_lo, cfg.count_hi, cfg.want_count, tmp_buf)
     st["scores_arr"][i], st["looks_arr"][i], st["counts_arr"][i] = s, l, c
     st["energies"][i] = _energy_for(cfg, st["grids"][i], s, l, c)
-    st["hist"][i, :] = st["energies"][i]
+    st["hist"][i, :] = st["energies"][i] + cfg.hist_reset_band
     st["lahc_pos"][i] = 0
 
 
@@ -552,7 +556,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             edge_pos, move_probs, cfg.p_edge_bias,
             cfg.w_score, cfg.w_look, cfg.w_count, cfg.w_heur, cfg.w_triple, cfg.want_count,
             cfg.look_window, cfg.count_lo, cfg.count_hi,
-            accept_mode, iters_per_segment, n_segments, do_swaps,
+            accept_mode, iters_per_segment, n_segments, do_swaps, cfg.max_worsening,
             st["accept_counter"], st["move_counter"], st["move_accept_counter"],
             st["swap_accept"], st["swap_attempt"],
             st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],
