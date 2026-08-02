@@ -44,6 +44,7 @@ MOVE_NAMES = ("copy_neighbor", "swap_adjacent", "avoid_repeat", "remap")
 # Acceptance-rule / search-mode choices exposed on the CLI.
 ACCEPT_MODES = ("sa", "lahc", "dlas")
 SEARCH_MODES = ("pt", "anneal")
+RESTART_MODES = ("best", "current")
 
 
 @dataclass
@@ -55,6 +56,10 @@ class SAConfig:
     seed_file: Optional[str] = None   # extra corpus file (8x14 blocks) to seed from
     seed_from_corpus: bool = True     # if False, ignore data/*.txt + prior run outputs and
                                        # start every replica from a fresh random grid
+    rng_seed: Optional[int] = None    # seeds driver.py's np.random.default_rng(); None means
+                                       # every run is nondeterministic (numpy draws OS entropy),
+                                       # which makes two runs' outcomes incomparable. Set this to
+                                       # get reproducible A/B comparisons between config changes.
 
     # --- termination --------------------------------------------------------
     max_seconds: Optional[float] = None
@@ -263,6 +268,10 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
     p.add_argument("--no-seed", action="store_true",
                     help="Ignore data/*.txt and any prior run outputs; start every "
                          "replica from a fresh random grid instead of the existing corpus.")
+    p.add_argument("--rng-seed", type=int, default=None,
+                    help="Seed driver.py's RNG for reproducible runs. Without this, two "
+                         "runs with identical flags still diverge (numpy draws OS entropy), "
+                         "which makes A/B comparisons meaningless.")
 
     p.add_argument("--seconds", type=float, default=None, dest="max_seconds")
     p.add_argument("--iters", type=int, default=None, dest="max_iters")
@@ -287,6 +296,11 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
     p.add_argument("--reheat", type=float, default=None)
     p.add_argument("--stagnation-iters", type=int, default=None)
     p.add_argument("--cycle-iters", type=int, default=None)
+    p.add_argument("--restart-from", type=str, default=None, choices=RESTART_MODES,
+                    help="On a stagnation-triggered reheat: 'best' resets every replica to "
+                         "best_grid (falling back to kicking its own current state after 3 "
+                         "consecutive stagnant reheats, for diversity); 'current' never resets "
+                         "to best_grid at all, always kicking in place.")
 
     p.add_argument("--adaptive-k", action="store_true", default=None,
                     help="Learn per-k acceptance-rate weights for avoid_repeat/"

@@ -105,12 +105,14 @@ def _make_replica_state(R, seed_grids):
     lahc_pos = np.zeros(R, dtype=np.int64)
     accept_counter = np.zeros(R, dtype=np.int64)
     move_counter = np.zeros((R, core.N_MOVES), dtype=np.int64)
+    move_accept_counter = np.zeros((R, core.N_MOVES), dtype=np.int64)
     swap_accept = np.zeros(max(R - 1, 0), dtype=np.int64)
     swap_attempt = np.zeros(max(R - 1, 0), dtype=np.int64)
     return dict(grids=grids, dmasks=dmasks, stamps=stamps, gens=gens, digit_bufs=digit_bufs,
                 rng_states=rng_states, scores_arr=scores_arr, looks_arr=looks_arr,
                 counts_arr=counts_arr, energies=energies, temps=temps, hist=hist,
                 lahc_pos=lahc_pos, accept_counter=accept_counter, move_counter=move_counter,
+                move_accept_counter=move_accept_counter,
                 swap_accept=swap_accept, swap_attempt=swap_attempt,
                 k_weights_avoid=np.ones((2, 8)), k_weights_swap=np.ones((2, 8)),
                 k_weights_remap=np.ones(9),
@@ -145,7 +147,8 @@ def bench_sa_scaling(seconds: float):
                         edge_pos, move_probs, 0.5,
                         1.0, 0.002, 0.0, 0.0, 0.0, False, 400, 1000, 10000,
                         core.ACCEPT_SA, 500, 2, True,
-                        st["accept_counter"], st["move_counter"], st["swap_accept"], st["swap_attempt"],
+                        st["accept_counter"], st["move_counter"], st["move_accept_counter"],
+                        st["swap_accept"], st["swap_attempt"],
                         st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],
                         st["k_attempt_avoid"], st["k_accept_avoid"], st["k_attempt_swap"], st["k_accept_swap"],
                         st["k_attempt_remap"], st["k_accept_remap"])
@@ -163,7 +166,8 @@ def bench_sa_scaling(seconds: float):
                             edge_pos, move_probs, 0.5,
                             1.0, 0.002, 0.0, 0.0, 0.0, False, 400, 1000, 10000,
                             core.ACCEPT_SA, iters_per_segment, 5, True,
-                            st["accept_counter"], st["move_counter"], st["swap_accept"], st["swap_attempt"],
+                            st["accept_counter"], st["move_counter"], st["move_accept_counter"],
+                        st["swap_accept"], st["swap_attempt"],
                             st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],
                             st["k_attempt_avoid"], st["k_accept_avoid"], st["k_attempt_swap"], st["k_accept_swap"],
                             st["k_attempt_remap"], st["k_accept_remap"])
