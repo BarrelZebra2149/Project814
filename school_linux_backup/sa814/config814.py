@@ -44,7 +44,7 @@ MOVE_NAMES = ("copy_neighbor", "swap_adjacent", "avoid_repeat", "remap")
 # Acceptance-rule / search-mode choices exposed on the CLI.
 ACCEPT_MODES = ("sa", "lahc", "dlas")
 SEARCH_MODES = ("pt", "anneal")
-RESTART_MODES = ("best", "current")
+RESTART_MODES = ("best", "pbest", "current")
 
 
 @dataclass
@@ -158,7 +158,49 @@ class SAConfig:
     cycle_iters: int = 2_000_000     # L_CYCLE: iterations per geometric-cooling cycle
     reheat: float = 0.6              # T <- T0 * reheat on stagnation-triggered reheat
     stagnation_iters: int = 500_000  # iters without a new best before reheating
-    restart_from: str = "best"       # "best" or "current"; falls back after 3 stagnant cycles
+    restart_from: str = "pbest"      # "best" (falls back to "current" after 3 stagnant
+                                      # cycles), "pbest" (each replica restarts from its
+                                      # own personal best -- default, see anchor_* below),
+                                      # or "current" (never restart, always kick in place)
+
+    # --- personal-best anchoring -----------------------------------------------
+    # Real runs showed replicas random-walking far below best_score for the
+    # entire run (accept rate flat ~40-45%, replica-pair Hamming distance
+    # statistically indistinguishable from independent random grids) --
+    # once a catastrophic move collapses a replica's score by thousands,
+    # nothing pulls it back toward the frontier it came from. This tracks
+    # each replica's OWN best (not the global best, which would collapse
+    # all replicas onto one basin -- exactly what stagnation-triggered
+    # reheat already does) and snaps a replica back to it once it's drifted
+    # anchor_margin points below, instead of only checking at
+    # stagnation_iters intervals.
+    anchor_enabled: bool = True
+    anchor_margin: int = 300    # pbest - look_window(400) is where the `look` energy
+                                # term goes fully blind to the replica's own frontier
+                                # (no formable values left in its window to see); 300
+                                # keeps snapback comfortably inside that horizon.
+    anchor_kick: int = 0        # cells randomized on snapback. 0 by default -- measured
+                                # empirically (see the stagnation investigation) that any
+                                # nonzero kick here is self-defeating near a high score:
+                                # a real 8-replica run seeded from a 7666 grid held
+                                # rock-steady (anchor_gap=0) for 33s, then a
+                                # stagnation-triggered reheat's kick collapsed it to
+                                # ~1000-1700, and from then on EVERY anchor snapback
+                                # (1104 of them logged) immediately re-collapsed itself,
+                                # because kick=3 has the same near-certain chance of
+                                # breaking a fragile high-score grid as the collapse that
+                                # triggered the snap in the first place (median positive
+                                # dE near a 7666 grid is ~6129 -- see preset_score_first's
+                                # docstring). anchor_gap never recovered from ~6500 for
+                                # the rest of that run. A snapback with kick=0 restores
+                                # the pristine known-good grid and lets the normal
+                                # accept/reject loop explore from there instead.
+    elite_size: int = 6         # top-N distinct grids tracked for resampling below
+    elite_resample_iters: int = 0   # iters between reassigning the worst pbest_scores
+                                     # replicas a random elite grid ("go with the
+                                     # winners"). 0 = off; only enable after measuring
+                                     # anchoring alone, since it's a second, compounding
+                                     # diversity mechanism
 
     # --- parallel tempering ----------------------------------------------------
     swap_interval: int = 2000    # iterations between adjacent-replica swap attempts
@@ -187,6 +229,7 @@ class SAConfig:
             "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap",
             "p_edge_bias", "replicas",
             "adaptive_k", "adaptive_k_update_iters", "adaptive_k_smoothing", "adaptive_k_decay",
+            "anchor_enabled", "anchor_margin", "anchor_kick", "elite_size", "elite_resample_iters",
         ]
         d = asdict(self)
         payload = json.dumps({k: d[k] for k in semantic_fields}, sort_keys=True)
@@ -299,8 +342,16 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
     p.add_argument("--restart-from", type=str, default=None, choices=RESTART_MODES,
                     help="On a stagnation-triggered reheat: 'best' resets every replica to "
                          "best_grid (falling back to kicking its own current state after 3 "
-                         "consecutive stagnant reheats, for diversity); 'current' never resets "
-                         "to best_grid at all, always kicking in place.")
+                         "consecutive stagnant reheats, for diversity); 'pbest' (default) "
+                         "resets each replica to its OWN best grid; 'current' never resets "
+                         "to any stored grid at all, always kicking in place.")
+
+    p.add_argument("--no-anchor", action="store_true",
+                    help="Disable personal-best anchoring (see anchor_enabled).")
+    p.add_argument("--anchor-margin", type=int, default=None)
+    p.add_argument("--anchor-kick", type=int, default=None)
+    p.add_argument("--elite-size", type=int, default=None)
+    p.add_argument("--elite-resample-iters", type=int, default=None)
 
     p.add_argument("--adaptive-k", action="store_true", default=None,
                     help="Learn per-k acceptance-rate weights for avoid_repeat/"
@@ -329,6 +380,9 @@ def config_from_cli(argv=None, default_preset: str = "score_first") -> SAConfig:
 
     if ns.no_seed:
         cfg.seed_from_corpus = False
+
+    if ns.no_anchor:
+        cfg.anchor_enabled = False
 
     if ns.fresh:
         cfg.resume = False
