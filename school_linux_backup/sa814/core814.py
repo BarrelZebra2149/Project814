@@ -488,6 +488,36 @@ def splitmix64_stream(seed, count):
     return out
 
 
+# ===========================================================================
+# Zobrist hashing for exact-state cycle detection
+# ===========================================================================
+# A fresh Zobrist hash of the whole 8x14 grid is computed every iteration in
+# _anneal_one (112 array lookups + XORs), not maintained incrementally --
+# evaluate() alone is already thousands of digit-formability checks per
+# iteration, so a flat 112-cell scan is comparatively free, and it avoids
+# threading a hash accumulator through every apply_move/undo_move variant
+# (copy_neighbor, swap_cluster, avoid_repeat, remap, kick), each of which
+# touches a different-shaped set of cells.
+#
+# Fixed seed (not random): hashes must be reproducible across runs/resumes
+# for a given --rng-seed A/B comparison, and a fresh process must always
+# agree with itself. Not checkpoint-persisted -- cycle_hashes is a
+# short-term recency window, not part of the actual search state, so
+# resuming with an empty buffer is harmless (equivalent to "nothing looks
+# like a repeat yet").
+_ZOBRIST_SEED = 0xC0FFEE1234567
+ZOBRIST = splitmix64_stream(_ZOBRIST_SEED, ROWS * COLS * 10).reshape(ROWS * COLS, 10)
+
+
+@njit(cache=True, nogil=True, inline="always")
+def zobrist_hash(grid, zobrist):
+    h = np.uint64(0)
+    for r in range(ROWS):
+        for c in range(COLS):
+            h ^= zobrist[r * COLS + c, grid[r, c]]
+    return h
+
+
 def make_rng_state(seed):
     """Returns a fresh uint64[2] RNG state seeded from an arbitrary python int."""
     words = splitmix64_stream(int(seed) & ((1 << 64) - 1), 2)
@@ -1045,7 +1075,8 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
                  accept_mode, iters, max_worsen, accept_counter, move_counter, move_accept_counter,
                  k_weights_avoid, k_weights_swap, k_weights_remap,
                  k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
-                 k_attempt_remap, k_accept_remap):
+                 k_attempt_remap, k_accept_remap,
+                 zobrist, cycle_hashes, cycle_write_pos):
     grid = grids[i]
     dmask = dmasks[i]
     stamp = stamps[i]
@@ -1053,6 +1084,9 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
     digit_buf = digit_bufs[i]
     my_hist = hist[i]
     lahc_len = my_hist.shape[0]
+    my_cycle_hashes = cycle_hashes[i]
+    cycle_buffer_len = my_cycle_hashes.shape[0]
+    cwpos = cycle_write_pos[i]
 
     my_k_attempt_avoid = k_attempt_avoid[i]
     my_k_accept_avoid = k_accept_avoid[i]
@@ -1095,8 +1129,27 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
             triples = float(count_triple_chains(grid))
         newE = energy_of(score, look, count, heur, triples, w_score, w_look, w_count, w_heur, w_triple)
 
+        # Exact-state cycle prevention: reject outright if this move's
+        # resulting grid was recently visited by this replica, UNLESS it's
+        # actually an improvement over the current state (aspiration --
+        # re-finding a better state is never wasted even if visited
+        # before). new_hash is computed whenever cycling is enabled
+        # (cycle_buffer_len>0) regardless of the aspiration check, since it
+        # still needs recording into the ring buffer on any accept below.
+        cycle_hit = False
+        new_hash = np.uint64(0)
+        if cycle_buffer_len > 0:
+            new_hash = zobrist_hash(grid, zobrist)
+            if newE >= curE:
+                for h in range(cycle_buffer_len):
+                    if my_cycle_hashes[h] == new_hash:
+                        cycle_hit = True
+                        break
+
         accept = False
-        if accept_mode == ACCEPT_SA:
+        if cycle_hit:
+            pass  # accept stays False -- treated the same as any other rejection below
+        elif accept_mode == ACCEPT_SA:
             dE = newE - curE
             if dE <= 0.0:
                 accept = True
@@ -1142,6 +1195,11 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
             looks_arr[i] = look
             counts_arr[i] = count
             accept_counter[i] += 1
+            if cycle_buffer_len > 0:
+                my_cycle_hashes[cwpos] = new_hash
+                cwpos += 1
+                if cwpos >= cycle_buffer_len:
+                    cwpos = 0
         else:
             undo_move(move_id, params, grid, dmask, perm_buf, inv_buf, dmask_scratch,
                       cell_r_buf, cell_c_buf, orig_val_buf)
@@ -1173,12 +1231,14 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
 
     gens[i] = gen
     lahc_pos[i] = pos
+    cycle_write_pos[i] = cwpos
 
 
 @njit(cache=True)
 def _attempt_swaps(grids, dmasks, energies, scores_arr, looks_arr, counts_arr,
                     hist, lahc_pos, temps, swap_rng_state,
-                    swap_accept_counter, swap_attempt_counter):
+                    swap_accept_counter, swap_attempt_counter,
+                    cycle_hashes, cycle_write_pos):
     R = grids.shape[0]
     for i in range(R - 1):
         j = i + 1
@@ -1205,6 +1265,12 @@ def _attempt_swaps(grids, dmasks, energies, scores_arr, looks_arr, counts_arr,
             for h in range(hist.shape[1]):
                 th = hist[i, h]; hist[i, h] = hist[j, h]; hist[j, h] = th
             tp = lahc_pos[i]; lahc_pos[i] = lahc_pos[j]; lahc_pos[j] = tp
+            # cycle_hashes/cycle_write_pos travel with the configuration too,
+            # same reasoning as hist/lahc_pos: they're "recent trajectory of
+            # THIS grid's lineage" bookkeeping, not tied to replica index i/j.
+            for h in range(cycle_hashes.shape[1]):
+                tch = cycle_hashes[i, h]; cycle_hashes[i, h] = cycle_hashes[j, h]; cycle_hashes[j, h] = tch
+            tcp = cycle_write_pos[i]; cycle_write_pos[i] = cycle_write_pos[j]; cycle_write_pos[j] = tcp
             swap_accept_counter[i] += 1
 
 
@@ -1219,7 +1285,8 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
               accept_counter, move_counter, move_accept_counter, swap_accept_counter, swap_attempt_counter,
               k_weights_avoid, k_weights_swap, k_weights_remap,
               k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
-              k_attempt_remap, k_accept_remap):
+              k_attempt_remap, k_accept_remap,
+              zobrist, cycle_hashes, cycle_write_pos):
     """Runs n_segments * iters_per_segment SA iterations per replica, attempting
     a replica-exchange swap sweep between segments (if do_swaps).
 
@@ -1229,6 +1296,10 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
     [R, 2, 8] or [R, 9]) that --adaptive-k pools across replicas between
     blocks to update the shared weights; harmless bookkeeping when
     --adaptive-k is off (driver.py just never reads them).
+
+    cycle_hashes (uint64[R, cycle_buffer]) + zobrist (core814.ZOBRIST)
+    implement exact-state cycle prevention -- see _anneal_one.
+    cycle_hashes.shape[1] == 0 disables it entirely.
     """
     R = grids.shape[0]
     for _seg in range(n_segments):
@@ -1242,11 +1313,13 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
                         accept_mode, iters_per_segment, max_worsen, accept_counter, move_counter, move_accept_counter,
                         k_weights_avoid, k_weights_swap, k_weights_remap,
                         k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
-                        k_attempt_remap, k_accept_remap)
+                        k_attempt_remap, k_accept_remap,
+                        zobrist, cycle_hashes, cycle_write_pos)
         if do_swaps and R > 1:
             _attempt_swaps(grids, dmasks, energies, scores_arr, looks_arr, counts_arr,
                            hist, lahc_pos, temps, swap_rng_state,
-                           swap_accept_counter, swap_attempt_counter)
+                           swap_accept_counter, swap_attempt_counter,
+                           cycle_hashes, cycle_write_pos)
 
 
 # ===========================================================================

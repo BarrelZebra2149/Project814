@@ -128,6 +128,12 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
     move_accept_counter = np.zeros((R, core.N_MOVES), dtype=np.int64)
     swap_accept = np.zeros(max(R - 1, 0), dtype=np.int64)
     swap_attempt = np.zeros(max(R - 1, 0), dtype=np.int64)
+    # Exact-state cycle prevention (core814.zobrist_hash / _anneal_one). Not
+    # checkpoint-persisted -- it's a short-term recency window, not part of
+    # the actual search state, so a fresh empty buffer on every process
+    # start is harmless (equivalent to "nothing looks like a repeat yet").
+    cycle_hashes = np.zeros((R, cfg.cycle_buffer), dtype=np.uint64)
+    cycle_write_pos = np.zeros(R, dtype=np.int64)
 
     k_state = _fresh_k_state(R)
 
@@ -149,6 +155,7 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
         swap_accept=swap_accept, swap_attempt=swap_attempt,
         pbest_grids=pbest_grids, pbest_scores=pbest_scores, pbest_energies=pbest_energies,
         n_anchor_snaps=0,
+        cycle_hashes=cycle_hashes, cycle_write_pos=cycle_write_pos,
         best_grid=grids[best_idx].copy(), best_score=int(scores_arr[best_idx]),
         best_energy=float(energies[best_idx]),
         total_iters=0, iters_since_best=0, elapsed_seconds=0.0, stagnant_cycles=0,
@@ -276,6 +283,10 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
     move_accept_counter[:n_common, :old_n_moves_acc] = ck.move_accept_counter[:n_common, :old_n_moves_acc]
     swap_accept = np.zeros(max(R - 1, 0), dtype=np.int64)
     swap_attempt = np.zeros(max(R - 1, 0), dtype=np.int64)
+    # Not checkpoint-persisted (see _fresh_state's comment) -- always starts
+    # fresh on resume too.
+    cycle_hashes = np.zeros((R, cfg.cycle_buffer), dtype=np.uint64)
+    cycle_write_pos = np.zeros(R, dtype=np.int64)
 
     # Personal-best anchoring state: carry over whatever replicas overlap;
     # any newly-added replica (R grew) starts anchored to its own initial
@@ -319,6 +330,7 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
         swap_accept=swap_accept, swap_attempt=swap_attempt,
         pbest_grids=pbest_grids, pbest_scores=pbest_scores, pbest_energies=pbest_energies,
         n_anchor_snaps=int(ck.n_anchor_snaps),
+        cycle_hashes=cycle_hashes, cycle_write_pos=cycle_write_pos,
         best_grid=ck.best_grid.copy(), best_score=int(ck.best_score), best_energy=float(ck.best_energy),
         total_iters=int(ck.total_iters), iters_since_best=int(ck.iters_since_best),
         elapsed_seconds=float(ck.elapsed_seconds), stagnant_cycles=int(ck.stagnant_cycles),
@@ -379,6 +391,12 @@ def _restore_replica(st: dict, cfg: SAConfig, i: int, src_grid, kick_strength: i
     st["energies"][i] = _energy_for(cfg, st["grids"][i], s, l, c)
     st["hist"][i, :] = st["energies"][i] + cfg.hist_reset_band
     st["lahc_pos"][i] = 0
+    # Cycle buffer holds "recently visited states of this grid's current
+    # lineage" -- after a restore (reheat or anchor snapback), that lineage
+    # has effectively restarted, so stale entries from wherever it just was
+    # would only risk rare false-positive rejections later. Cheap to clear.
+    st["cycle_hashes"][i, :] = 0
+    st["cycle_write_pos"][i] = 0
 
 
 def _update_elite_pool(st: dict, cfg: SAConfig) -> None:
@@ -562,6 +580,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],
             st["k_attempt_avoid"], st["k_accept_avoid"], st["k_attempt_swap"], st["k_accept_swap"],
             st["k_attempt_remap"], st["k_accept_remap"],
+            core.ZOBRIST, st["cycle_hashes"], st["cycle_write_pos"],
         )
         block_elapsed = time.perf_counter() - t_block
         iters_done = cfg.replicas * iters_per_segment * n_segments
