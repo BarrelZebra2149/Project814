@@ -57,7 +57,8 @@ MOVE_COPY_NEIGHBOR = 0
 MOVE_SWAP_ADJACENT = 1
 MOVE_AVOID_REPEAT = 2
 MOVE_REMAP = 3
-N_MOVES = 4
+MOVE_REPAIR = 4
+N_MOVES = 5
 
 MAX_CLUSTER = 9   # target cell + up to 8 neighbors, for swap_adjacent
 MAX_DERANGE = 10  # largest derangement needed (remap: up to 10 digits)
@@ -937,12 +938,168 @@ def apply_swap_cluster(state, grid, dmask, edge_positions, p_edge,
     params[4] = postype
 
 
+@njit(cache=True, inline="always")
+def apply_repair(state, grid, dmask, cur_score, digit_buf, params):
+    """Targeted move: instead of a blind random change, computes EXACTLY
+    which single cell/digit change would let the grid form cur_score + 1
+    (the specific number that's failing right now, by definition of
+    `score`), by re-running is_formable's frontier propagation and
+    capturing the walk's failure point instead of just returning False.
+
+    The n0..n7 expressions below are copied verbatim from is_formable
+    (core814.py) -- not re-derived -- since they encode "which cells are
+    8-adjacent to a live walk endpoint" and any drift from the real
+    formability logic here would make repair suggest cells that don't
+    actually help.
+
+    Falls back to apply_copy_neighbor (blind, but always valid) when
+    there's nothing more specific to compute: cur_score+1 has already
+    overflowed UPPER, is a single digit (is_formable's nd==1 base case
+    has no "walk" to fail partway through), or -- structurally
+    shouldn't happen, since it would mean evaluate() already found this
+    target formable -- the loop completes without the walk ever dying.
+    """
+    target = cur_score + 1
+    if target >= UPPER:
+        apply_copy_neighbor_fallback(state, grid, dmask, params)
+        return
+    nd = fill_digits(target, digit_buf)
+    if nd == 1:
+        apply_copy_neighbor_fallback(state, grid, dmask, params)
+        return
+
+    d0 = digit_buf[0]
+    c0 = dmask[d0, 0]
+    c1 = dmask[d0, 1]
+    c2 = dmask[d0, 2]
+    c3 = dmask[d0, 3]
+    c4 = dmask[d0, 4]
+    c5 = dmask[d0, 5]
+    c6 = dmask[d0, 6]
+    c7 = dmask[d0, 7]
+
+    if (c0 | c1 | c2 | c3 | c4 | c5 | c6 | c7) == 0:
+        # The leading digit doesn't exist anywhere on the grid at all --
+        # no walk can even start. Put it somewhere random; this alone may
+        # not be enough to form `target`, but it's a necessary condition
+        # and a strictly more targeted move than a fully blind one.
+        r = rng_next_bounded(state, ROWS)
+        c = rng_next_bounded(state, COLS)
+        old_v = grid[r, c]
+        set_cell(grid, dmask, r, c, d0)
+        params[0] = r
+        params[1] = c
+        params[2] = old_v
+        params[3] = -1
+        params[4] = -1
+        return
+
+    dk = -1
+    n0 = n1 = n2 = n3 = n4 = n5 = n6 = n7 = 0
+    died = False
+    for k in range(1, nd):
+        dk = digit_buf[k]
+
+        n0 = (((c0 << 1) | (c0 >> 1)) | ((c1 << 1) | c1 | (c1 >> 1))) & COL_MASK
+        n1 = (((c1 << 1) | (c1 >> 1)) | ((c0 << 1) | c0 | (c0 >> 1)) | ((c2 << 1) | c2 | (c2 >> 1))) & COL_MASK
+        n2 = (((c2 << 1) | (c2 >> 1)) | ((c1 << 1) | c1 | (c1 >> 1)) | ((c3 << 1) | c3 | (c3 >> 1))) & COL_MASK
+        n3 = (((c3 << 1) | (c3 >> 1)) | ((c2 << 1) | c2 | (c2 >> 1)) | ((c4 << 1) | c4 | (c4 >> 1))) & COL_MASK
+        n4 = (((c4 << 1) | (c4 >> 1)) | ((c3 << 1) | c3 | (c3 >> 1)) | ((c5 << 1) | c5 | (c5 >> 1))) & COL_MASK
+        n5 = (((c5 << 1) | (c5 >> 1)) | ((c4 << 1) | c4 | (c4 >> 1)) | ((c6 << 1) | c6 | (c6 >> 1))) & COL_MASK
+        n6 = (((c6 << 1) | (c6 >> 1)) | ((c5 << 1) | c5 | (c5 >> 1)) | ((c7 << 1) | c7 | (c7 >> 1))) & COL_MASK
+        n7 = (((c7 << 1) | (c7 >> 1)) | ((c6 << 1) | c6 | (c6 >> 1))) & COL_MASK
+
+        new_c0 = n0 & dmask[dk, 0]
+        new_c1 = n1 & dmask[dk, 1]
+        new_c2 = n2 & dmask[dk, 2]
+        new_c3 = n3 & dmask[dk, 3]
+        new_c4 = n4 & dmask[dk, 4]
+        new_c5 = n5 & dmask[dk, 5]
+        new_c6 = n6 & dmask[dk, 6]
+        new_c7 = n7 & dmask[dk, 7]
+
+        if (new_c0 | new_c1 | new_c2 | new_c3 | new_c4 | new_c5 | new_c6 | new_c7) == 0:
+            died = True
+            break
+
+        c0, c1, c2, c3, c4, c5, c6, c7 = new_c0, new_c1, new_c2, new_c3, new_c4, new_c5, new_c6, new_c7
+
+    if not died:
+        # target is actually already formable (a stale cur_score, or a
+        # race between apply_move and whatever computed cur_score) --
+        # nothing to repair.
+        apply_copy_neighbor_fallback(state, grid, dmask, params)
+        return
+
+    # Every set bit across n0..n7 is a valid candidate: since new_c* (the
+    # AND with dmask[dk]) is all-zero, none of these reachable cells
+    # already hold dk, so changing any one of them to dk is a real change
+    # that (locally) extends the walk one more step.
+    rows8 = (n0, n1, n2, n3, n4, n5, n6, n7)
+    total = 0
+    for r in range(ROWS):
+        m = rows8[r]
+        while m != 0:
+            total += m & np.int64(1)
+            m >>= np.int64(1)
+
+    if total == 0:
+        # Structurally shouldn't happen (died implies at least the digit's
+        # own presence check failed, which requires SOME reachable cell),
+        # but never leave a move half-applied.
+        apply_copy_neighbor_fallback(state, grid, dmask, params)
+        return
+
+    pick = rng_next_bounded(state, total)
+    idx = 0
+    tr = -1
+    tc = -1
+    for r in range(ROWS):
+        m = rows8[r]
+        for c in range(COLS):
+            if (m >> np.int64(c)) & np.int64(1):
+                if idx == pick:
+                    tr = r
+                    tc = c
+                idx += 1
+
+    old_v = grid[tr, tc]
+    set_cell(grid, dmask, tr, tc, dk)
+    params[0] = tr
+    params[1] = tc
+    params[2] = old_v
+    params[3] = -1
+    params[4] = -1
+
+
+@njit(cache=True, inline="always")
+def apply_copy_neighbor_fallback(state, grid, dmask, params):
+    """apply_repair's fallback path needs apply_copy_neighbor's signature
+    (edge_positions, p_edge, nbr_val_buf) it doesn't have -- apply_move
+    only passes apply_repair a plain digit_buf, not the full move-agnostic
+    scratch set. A uniformly random single-cell change is a reasonable,
+    always-valid fallback that doesn't need any of that."""
+    r = rng_next_bounded(state, ROWS)
+    c = rng_next_bounded(state, COLS)
+    old_v = grid[r, c]
+    new_v = rng_next_bounded(state, 9)
+    if new_v >= old_v:
+        new_v += 1
+    set_cell(grid, dmask, r, c, new_v)
+    params[0] = r
+    params[1] = c
+    params[2] = old_v
+    params[3] = -1
+    params[4] = -1
+
+
 @njit(cache=True)
 def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
                nbr_val_buf, flag_buf, allowed_buf, params,
                perm_buf, dmask_scratch,
                cell_r_buf, cell_c_buf, orig_val_buf,
-               k_weights_avoid, k_weights_swap, k_weights_remap):
+               k_weights_avoid, k_weights_swap, k_weights_remap,
+               cur_score, digit_buf):
     """Applies one random move in-place. Fills `params` (int64[5]) with enough
     information for undo_move to reverse it exactly, and returns the move id.
 
@@ -970,7 +1127,14 @@ def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
     the k index and (where applicable) position-type used, for the caller
     to feed into --adaptive-k's counters; MOVE_COPY_NEIGHBOR isn't tracked
     (its k provably doesn't affect the outcome, so there's nothing to
-    learn) and resets them to -1.
+    learn) and resets them to -1. MOVE_REPAIR also resets them to -1 (not
+    a k-parameterized move).
+
+    cur_score/digit_buf are used only by MOVE_REPAIR (see apply_repair) --
+    the replica's current score (to compute the specific value it's
+    failing on) and a scratch digit buffer (must not alias whatever the
+    caller uses for evaluate()'s own digit_buf, since apply_move always
+    runs before evaluate() re-fills it each iteration).
     """
     r = rng_next_double(state)
     cum = 0.0
@@ -998,16 +1162,20 @@ def apply_move(state, grid, dmask, edge_positions, move_probs, p_edge,
                            nbr_val_buf, flag_buf, allowed_buf, k_weights_avoid, params)
         return MOVE_AVOID_REPEAT
 
-    # MOVE_REMAP
-    apply_remap(state, grid, dmask, perm_buf, flag_buf, allowed_buf, dmask_scratch,
-                k_weights_remap, params)
-    return MOVE_REMAP
+    if chosen == MOVE_REMAP:
+        apply_remap(state, grid, dmask, perm_buf, flag_buf, allowed_buf, dmask_scratch,
+                    k_weights_remap, params)
+        return MOVE_REMAP
+
+    # MOVE_REPAIR
+    apply_repair(state, grid, dmask, cur_score, digit_buf, params)
+    return MOVE_REPAIR
 
 
 @njit(cache=True)
 def undo_move(move_id, params, grid, dmask, perm_buf, inv_buf, dmask_scratch,
               cell_r_buf, cell_c_buf, orig_val_buf):
-    if move_id == MOVE_COPY_NEIGHBOR or move_id == MOVE_AVOID_REPEAT:
+    if move_id == MOVE_COPY_NEIGHBOR or move_id == MOVE_AVOID_REPEAT or move_id == MOVE_REPAIR:
         set_cell(grid, dmask, params[0], params[1], params[2])
     elif move_id == MOVE_SWAP_ADJACENT:
         m = params[0]
@@ -1117,7 +1285,8 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
                               nbr_val_buf, flag_buf, allowed_buf, params,
                               perm_buf, dmask_scratch,
                               cell_r_buf, cell_c_buf, orig_val_buf,
-                              k_weights_avoid, k_weights_swap, k_weights_remap)
+                              k_weights_avoid, k_weights_swap, k_weights_remap,
+                              scores_arr[i], digit_buf)
 
         score, look, count = evaluate(dmask, stamp, gen, look_window, count_lo, count_hi,
                                        want_count, digit_buf)
@@ -1358,7 +1527,8 @@ def _calibrate_samples(grid, dmask, stamp, gen0, rng_state, edge_positions, move
                               nbr_val_buf, flag_buf, allowed_buf, params,
                               perm_buf, dmask_scratch,
                               cell_r_buf, cell_c_buf, orig_val_buf,
-                              k_weights_avoid, k_weights_swap, k_weights_remap)
+                              k_weights_avoid, k_weights_swap, k_weights_remap,
+                              score, digit_buf)
         score, look, count = evaluate(dmask, stamp, gen, look_window, count_lo, count_hi,
                                        want_count, digit_buf)
         heur = heur_chain_variance(grid) if w_heur != 0.0 else 0.0

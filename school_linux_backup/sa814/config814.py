@@ -39,7 +39,7 @@ GRID_SIZE = GRID_ROWS * GRID_COLS
 MAX_SCORE = 8142
 
 # Move operator names, in the fixed order used by core814's move dispatcher.
-MOVE_NAMES = ("copy_neighbor", "swap_adjacent", "avoid_repeat", "remap")
+MOVE_NAMES = ("copy_neighbor", "swap_adjacent", "avoid_repeat", "remap", "repair")
 
 # Acceptance-rule / search-mode choices exposed on the CLI.
 ACCEPT_MODES = ("sa", "lahc", "dlas")
@@ -129,6 +129,15 @@ class SAConfig:
                            # k=2) and remap_full (relabel all 10 via a random
                            # permutation, k=10) were really the same idea at different
                            # k, so their shares combine here (0.01 + 0.05 -> 0.06).
+    p_repair: float = 0.0  # targeted move: computes exactly which single cell/digit
+                            # change would let the grid form cur_score+1 (the specific
+                            # number that's failing right now), by re-running
+                            # is_formable's frontier propagation and capturing where
+                            # the walk dies instead of just returning False -- see
+                            # core814.apply_repair. A calculation, not a guess, unlike
+                            # every other move here. Default 0.0 (off) until an A/B
+                            # confirms its accept rate actually beats copy_neighbor's;
+                            # enable with --p-repair.
     p_edge_bias: float = 0.5     # probability a local move targets a border cell
 
     # --- adaptive k-distribution learning (opt-in) ----------------------------
@@ -270,6 +279,7 @@ class SAConfig:
             self.p_swap_adjacent,
             self.p_avoid_repeat,
             self.p_remap,
+            self.p_repair,
         )
 
     def cfg_hash(self) -> str:
@@ -278,7 +288,7 @@ class SAConfig:
             "accept_mode", "search_mode", "lahc_len",
             "w_score", "w_look", "w_count", "w_heur", "w_triple", "want_count",
             "look_window", "count_lo", "count_hi",
-            "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap",
+            "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap", "p_repair",
             "p_edge_bias", "replicas",
             "adaptive_k", "adaptive_k_update_iters", "adaptive_k_smoothing", "adaptive_k_decay",
             "anchor_enabled", "anchor_margin", "anchor_kick", "elite_size", "elite_resample_iters",
@@ -386,6 +396,11 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
     p.add_argument("--w-heur", type=float, default=None)
     p.add_argument("--w-triple", type=float, default=None)
     p.add_argument("--look-window", type=int, default=None)
+    p.add_argument("--p-repair", type=float, default=None,
+                    help="Move-mix share for the targeted repair move (core814."
+                         "apply_repair); 0.0 (default) disables it. The only move "
+                         "probability with a dedicated flag, since it's meant to be "
+                         "A/B tested against the default mix directly.")
 
     p.add_argument("--checkpoint-secs", type=float, default=None)
     p.add_argument("--swap-interval", type=int, default=None)
