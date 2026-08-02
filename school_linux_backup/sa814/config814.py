@@ -235,6 +235,25 @@ class SAConfig:
                                    # score-point-equivalent units, since w_score=1.0)
                                    # instead of freezing solid.
 
+    # --- exact-state cycle prevention --------------------------------------------
+    # Once Phase 1/2 keep a replica anchored near its own frontier instead of
+    # randomly walking the whole state space, re-visiting a grid it already
+    # tried (and rejected/reverted from) becomes a real, measurable possibility
+    # rather than a near-zero-probability event in a 10^112-state space. Each
+    # replica keeps a ring buffer of Zobrist hashes (core814.ZOBRIST) of its
+    # last cycle_buffer accepted states; a proposed move whose resulting grid
+    # matches one of them is rejected outright UNLESS it's actually an
+    # improvement over the replica's current energy (aspiration -- a genuinely
+    # better state is never wasted even if visited before).
+    cycle_buffer: int = 64   # 0 = off. Deliberately much smaller than a classic
+                              # tabu list's few-thousand-entry memory: the check is
+                              # a linear scan over cycle_buffer entries done EVERY
+                              # iteration (a hash set would avoid this, but adds
+                              # real complexity for a numba kernel), so this trades
+                              # memory depth for per-iteration cost. 64 is short-
+                              # term "don't immediately undo what I just tried"
+                              # memory, not a full visited-set.
+
     # --- parallel tempering ----------------------------------------------------
     swap_interval: int = 2000    # iterations between adjacent-replica swap attempts
 
@@ -263,7 +282,7 @@ class SAConfig:
             "p_edge_bias", "replicas",
             "adaptive_k", "adaptive_k_update_iters", "adaptive_k_smoothing", "adaptive_k_decay",
             "anchor_enabled", "anchor_margin", "anchor_kick", "elite_size", "elite_resample_iters",
-            "max_worsening", "hist_reset_band",
+            "max_worsening", "hist_reset_band", "cycle_buffer",
         ]
         d = asdict(self)
         payload = json.dumps({k: d[k] for k in semantic_fields}, sort_keys=True)
@@ -392,6 +411,9 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
                          "bar can get; 0.0 disables. Blocks catastrophic collapse-by-"
                          "thousands accepts outright.")
     p.add_argument("--hist-reset-band", type=float, default=None)
+
+    p.add_argument("--cycle-buffer", type=int, default=None,
+                    help="Ring-buffer size for exact-state cycle prevention; 0 disables.")
 
     p.add_argument("--adaptive-k", action="store_true", default=None,
                     help="Learn per-k acceptance-rate weights for avoid_repeat/"
