@@ -1240,7 +1240,7 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
                  edge_positions, move_probs, p_edge,
                  w_score, w_look, w_count, w_heur, w_triple,
                  want_count, look_window, count_lo, count_hi,
-                 accept_mode, iters, max_worsen, accept_counter, move_counter, move_accept_counter,
+                 accept_mode, iters, max_worsen, min_worsen, accept_counter, move_counter, move_accept_counter,
                  k_weights_avoid, k_weights_swap, k_weights_remap,
                  k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
                  k_attempt_remap, k_accept_remap,
@@ -1332,6 +1332,14 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
             # drifted that high too. Without this, one such accept is
             # irrecoverable on score's cliff landscape -- see max_worsening
             # in config814.py for the measured evidence.
+            # Hard floor: once history has converged down near curE (the
+            # common case at a local optimum, since rejections only ever
+            # pull history down toward curE and nothing pushes it back up),
+            # the bar must not be allowed to collapse to curE itself -- that
+            # degrades the accept rule to pure greedy and the replica can
+            # never escape. See min_worsening in config814.py.
+            if min_worsen > 0.0 and bar < curE + min_worsen:
+                bar = curE + min_worsen
             if max_worsen > 0.0 and bar > curE + max_worsen:
                 bar = curE + max_worsen
             if newE <= bar or newE <= curE:
@@ -1346,6 +1354,18 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
             for h in range(1, lahc_len):
                 if my_hist[h] > hmax:
                     hmax = my_hist[h]
+            # Floor: history converging to curE (every proposal rejected at
+            # a local optimum) is exactly the absorbing state that freezes
+            # replicas solid -- rejected moves only ever pull low slots up
+            # to curE, and the only way to pull a slot back down (an
+            # accepted improving move) requires newE < hmax, so hmax can
+            # never climb back above where it already sits. Without this
+            # floor hmax==curE makes the accept rule collapse to pure
+            # greedy (newE <= curE) with no way out. Confirmed as the cause
+            # of three real servers freezing at 5408/5498/5797 within
+            # 5-6 minutes, stagnant_cycles cycling 1->2->3->1 forever.
+            if min_worsen > 0.0 and hmax < curE + min_worsen:
+                hmax = curE + min_worsen
             if max_worsen > 0.0 and hmax > curE + max_worsen:
                 hmax = curE + max_worsen
             prvF = curE
@@ -1450,7 +1470,7 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
               edge_positions, move_probs, p_edge,
               w_score, w_look, w_count, w_heur, w_triple,
               want_count, look_window, count_lo, count_hi,
-              accept_mode, iters_per_segment, n_segments, do_swaps, max_worsen,
+              accept_mode, iters_per_segment, n_segments, do_swaps, max_worsen, min_worsen,
               accept_counter, move_counter, move_accept_counter, swap_accept_counter, swap_attempt_counter,
               k_weights_avoid, k_weights_swap, k_weights_remap,
               k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
@@ -1479,7 +1499,7 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
                         edge_positions, move_probs, p_edge,
                         w_score, w_look, w_count, w_heur, w_triple,
                         want_count, look_window, count_lo, count_hi,
-                        accept_mode, iters_per_segment, max_worsen, accept_counter, move_counter, move_accept_counter,
+                        accept_mode, iters_per_segment, max_worsen, min_worsen, accept_counter, move_counter, move_accept_counter,
                         k_weights_avoid, k_weights_swap, k_weights_remap,
                         k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
                         k_attempt_remap, k_accept_remap,

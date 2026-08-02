@@ -210,6 +210,26 @@ class SAConfig:
                                      # winners"). 0 = off; only enable after measuring
                                      # anchoring alone, since it's a second, compounding
                                      # diversity mechanism
+    anchor_grace_iters: int = 200_000   # iterations (per replica) of immunity from
+                                         # anchoring snapback immediately after a
+                                         # reheat restores+kicks a replica. 0 = no
+                                         # grace. Without this, restart_from='pbest'
+                                         # reheat's kick is cancelled almost every
+                                         # time: kick randomizes anchor_kick cells,
+                                         # which near a high score almost always
+                                         # collapses it (median positive dE near a
+                                         # 7666 grid is ~6129 -- see anchor_kick's
+                                         # docstring), and the very next anchoring
+                                         # pass sees "score < pbest - anchor_margin"
+                                         # and snaps straight back to pbest before the
+                                         # kicked state ever gets a chance to explore.
+                                         # pbest itself never falls (monotone), so
+                                         # without a grace window the kick gets one
+                                         # ~0.25s block to prove itself and then is
+                                         # reverted -- observed directly as the
+                                         # stagnant_cycles 1->2->3->1 loop on frozen
+                                         # servers, where reheat fired every cycle but
+                                         # never actually escaped the snapback.
 
     # --- DLAS trapdoor prevention ------------------------------------------------
     # The DLAS accept rule (core814._anneal_one) is `accept if newE == curE or
@@ -234,6 +254,25 @@ class SAConfig:
                                    # collapses a high-scoring grid outright -- this is
                                    # not a bug to work around, it's max_worsening
                                    # correctly recognizing remap can't safely fire there.
+    min_worsening: float = 5.0   # 0.0 disables. Hard floor on hmax: the DLAS/LAHC
+                                  # accept bar can never collapse below curE +
+                                  # min_worsening, no matter how good history has
+                                  # become. Pairs with max_worsening (the ceiling);
+                                  # min == max makes this exactly threshold accepting.
+                                  # Without this, hmax is a monotone-non-increasing
+                                  # ratchet: rejected moves can only pull low history
+                                  # slots up to curE, never push high slots down, and
+                                  # the only path that lowers a slot (an accepted
+                                  # improving move) requires newE < hmax, so hmax can
+                                  # never be pushed back above where it already is. At
+                                  # a local optimum where every proposal is rejected,
+                                  # all lahc_len slots converge to curE within one
+                                  # window, hmax collapses to exactly curE, and the
+                                  # accept rule degrades to pure greedy (newE <= curE)
+                                  # forever -- confirmed as the cause of three real
+                                  # servers freezing solid at 5408/5498/5797 within
+                                  # 5-6 minutes, stagnant_cycles cycling 1->2->3->1
+                                  # forever with best never once updating.
     hist_reset_band: float = 2.0  # every flat history fill (fresh start, resume,
                                    # reheat/anchor restore) sets hist[:] = energy +
                                    # hist_reset_band instead of exactly energy. At
@@ -292,7 +331,8 @@ class SAConfig:
             "p_edge_bias", "replicas",
             "adaptive_k", "adaptive_k_update_iters", "adaptive_k_smoothing", "adaptive_k_decay",
             "anchor_enabled", "anchor_margin", "anchor_kick", "elite_size", "elite_resample_iters",
-            "max_worsening", "hist_reset_band", "cycle_buffer",
+            "anchor_grace_iters",
+            "max_worsening", "min_worsening", "hist_reset_band", "cycle_buffer",
         ]
         d = asdict(self)
         payload = json.dumps({k: d[k] for k in semantic_fields}, sort_keys=True)
@@ -425,7 +465,16 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
                     help="Hard ceiling on how bad DLAS/LAHC's history-derived accept "
                          "bar can get; 0.0 disables. Blocks catastrophic collapse-by-"
                          "thousands accepts outright.")
+    p.add_argument("--min-worsening", type=float, default=None,
+                    help="Hard floor on how good DLAS/LAHC's history-derived accept "
+                         "bar can get; 0.0 disables. Prevents the accept bar from "
+                         "collapsing to pure greedy (curE) once history converges at "
+                         "a local optimum.")
     p.add_argument("--hist-reset-band", type=float, default=None)
+    p.add_argument("--anchor-grace-iters", type=int, default=None,
+                    help="Per-replica iterations of immunity from anchoring snapback "
+                         "immediately after a reheat restores+kicks that replica; "
+                         "0 disables the grace window.")
 
     p.add_argument("--cycle-buffer", type=int, default=None,
                     help="Ring-buffer size for exact-state cycle prevention; 0 disables.")
