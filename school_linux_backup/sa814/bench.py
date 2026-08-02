@@ -101,7 +101,9 @@ def _make_replica_state(R, seed_grids):
     temps = np.full(R, 1.0)
     lahc_len = 32
     hist = np.zeros((R, lahc_len), dtype=np.float64)
-    hist[:] = energies[:, None]
+    hist[:] = energies[:, None] + 2.0  # + core814's default hist_reset_band, so a flat
+                                        # exactly-energy fill doesn't collapse DLAS/LAHC's
+                                        # bar to pure greedy right at the benchmark's start
     lahc_pos = np.zeros(R, dtype=np.int64)
     accept_counter = np.zeros(R, dtype=np.int64)
     move_counter = np.zeros((R, core.N_MOVES), dtype=np.int64)
@@ -149,7 +151,7 @@ def bench_sa_scaling(seconds: float):
                         st["hist"], st["lahc_pos"], swap_rng,
                         edge_pos, move_probs, 0.5,
                         1.0, 0.002, 0.0, 0.0, 0.0, False, 400, 1000, 10000,
-                        core.ACCEPT_SA, 500, 2, True, 0.0,
+                        core.ACCEPT_SA, 500, 2, True, 0.0, 0.0,
                         st["accept_counter"], st["move_counter"], st["move_accept_counter"],
                         st["swap_accept"], st["swap_attempt"],
                         st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],
@@ -169,7 +171,7 @@ def bench_sa_scaling(seconds: float):
                             st["hist"], st["lahc_pos"], swap_rng,
                             edge_pos, move_probs, 0.5,
                             1.0, 0.002, 0.0, 0.0, 0.0, False, 400, 1000, 10000,
-                            core.ACCEPT_SA, iters_per_segment, 5, True, 0.0,
+                            core.ACCEPT_SA, iters_per_segment, 5, True, 0.0, 0.0,
                             st["accept_counter"], st["move_counter"], st["move_accept_counter"],
                         st["swap_accept"], st["swap_attempt"],
                             st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],

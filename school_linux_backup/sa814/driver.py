@@ -134,6 +134,12 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
     # start is harmless (equivalent to "nothing looks like a repeat yet").
     cycle_hashes = np.zeros((R, cfg.cycle_buffer), dtype=np.uint64)
     cycle_write_pos = np.zeros(R, dtype=np.int64)
+    # Anchoring grace-period countdown (Fix 2): per-replica remaining
+    # iterations of immunity from anchoring snapback after a reheat. Not
+    # checkpoint-persisted -- same reasoning as cycle_hashes: a short-term
+    # window, not real search state, so starting empty on every process
+    # start is harmless (equivalent to "no grace owed yet").
+    anchor_grace = np.zeros(R, dtype=np.int64)
 
     k_state = _fresh_k_state(R)
 
@@ -154,7 +160,7 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
         move_accept_counter=move_accept_counter,
         swap_accept=swap_accept, swap_attempt=swap_attempt,
         pbest_grids=pbest_grids, pbest_scores=pbest_scores, pbest_energies=pbest_energies,
-        n_anchor_snaps=0,
+        n_anchor_snaps=0, anchor_grace=anchor_grace,
         cycle_hashes=cycle_hashes, cycle_write_pos=cycle_write_pos,
         best_grid=grids[best_idx].copy(), best_score=int(scores_arr[best_idx]),
         best_energy=float(energies[best_idx]),
@@ -264,6 +270,12 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
     lahc_len = ck.hist.shape[1] if ck.hist.ndim == 2 else cfg.lahc_len
     hist = np.empty((R, lahc_len), dtype=np.float64)
     hist[:n_common] = ck.hist[:n_common]
+    # A history that was already frozen (all slots converged to curE, the
+    # absorbing state Fix 1/min_worsening targets) at checkpoint time would
+    # otherwise resume exactly as frozen as it was saved. Re-lay the same
+    # floor a fresh start gets, so a resume can never be worse off than a
+    # fresh run at recovering from this.
+    hist[:n_common] = np.maximum(hist[:n_common], energies[:n_common, None] + cfg.hist_reset_band)
     for i in range(n_common, R):
         hist[i, :] = energies[i] + cfg.hist_reset_band
     lahc_pos = np.zeros(R, dtype=np.int64)
@@ -287,6 +299,9 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
     # fresh on resume too.
     cycle_hashes = np.zeros((R, cfg.cycle_buffer), dtype=np.uint64)
     cycle_write_pos = np.zeros(R, dtype=np.int64)
+    # Anchoring grace countdown (Fix 2): not checkpoint-persisted, same as
+    # cycle_hashes above -- always starts fresh on resume too.
+    anchor_grace = np.zeros(R, dtype=np.int64)
 
     # Personal-best anchoring state: carry over whatever replicas overlap;
     # any newly-added replica (R grew) starts anchored to its own initial
@@ -329,7 +344,7 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
         move_accept_counter=move_accept_counter,
         swap_accept=swap_accept, swap_attempt=swap_attempt,
         pbest_grids=pbest_grids, pbest_scores=pbest_scores, pbest_energies=pbest_energies,
-        n_anchor_snaps=int(ck.n_anchor_snaps),
+        n_anchor_snaps=int(ck.n_anchor_snaps), anchor_grace=anchor_grace,
         cycle_hashes=cycle_hashes, cycle_write_pos=cycle_write_pos,
         best_grid=ck.best_grid.copy(), best_score=int(ck.best_score), best_energy=float(ck.best_energy),
         total_iters=int(ck.total_iters), iters_since_best=int(ck.iters_since_best),
@@ -551,6 +566,17 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
     iters_per_segment = 2000
     n_segments = 5
     measured_iters_per_sec = None
+    # Fix 3: accept_counter/move_counter are cumulative for the whole run
+    # (never reset, carried across checkpoints), so the printed accept rate
+    # kept showing 3.9-5.3% on servers that had actually frozen solid --
+    # already-accumulated hundreds of millions of iters' worth of history
+    # swamped a recent true rate of 0%. Snapshot the previous print's totals
+    # and the previous scores_arr so each print can report the DELTA since
+    # last time (accept_recent, n_moved) alongside the old cumulative value
+    # (renamed accept_life for clarity).
+    prev_total_accept = 0
+    prev_total_moves = 0
+    prev_scores_snapshot = st["scores_arr"].copy()
 
     def save_now():
         _safe_checkpoint_io("checkpoint save", checkpoint.save, run_dir,
@@ -574,7 +600,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             edge_pos, move_probs, cfg.p_edge_bias,
             cfg.w_score, cfg.w_look, cfg.w_count, cfg.w_heur, cfg.w_triple, cfg.want_count,
             cfg.look_window, cfg.count_lo, cfg.count_hi,
-            accept_mode, iters_per_segment, n_segments, do_swaps, cfg.max_worsening,
+            accept_mode, iters_per_segment, n_segments, do_swaps, cfg.max_worsening, cfg.min_worsening,
             st["accept_counter"], st["move_counter"], st["move_accept_counter"],
             st["swap_accept"], st["swap_attempt"],
             st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],
@@ -671,6 +697,19 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
         # _rescore) since _restore_replica's memo-invalidation fix means
         # they can no longer desync from the grid during normal annealing.
         if cfg.anchor_enabled:
+            # Fix 2: a reheat's kick (see the stagnation/reheat block below)
+            # gets exactly one block to prove itself before this pass ran --
+            # since it almost always collapses a high-scoring grid outright
+            # (median positive dE near a 7666 grid is ~6129, see anchor_kick's
+            # docstring), the very next anchoring pass used to see "score <
+            # pbest - anchor_margin" and snap straight back, undoing the kick
+            # before it ever got a chance to explore (pbest is monotone, so
+            # it never falls to meet the kicked replica partway). anchor_grace
+            # is a per-replica countdown (in iterations) of immunity from
+            # snapback set right after a reheat restore; it's independent of
+            # -- and always overridden by -- an actual improvement, which
+            # must be recorded the instant it happens regardless of grace.
+            iters_per_replica = iters_done // max(cfg.replicas, 1)
             for i in range(cfg.replicas):
                 s_i = int(st["scores_arr"][i])
                 e_i = float(st["energies"][i])
@@ -679,6 +718,9 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
                     st["pbest_grids"][i] = st["grids"][i].copy()
                     st["pbest_scores"][i] = s_i
                     st["pbest_energies"][i] = e_i
+                    st["anchor_grace"][i] = 0
+                elif st["anchor_grace"][i] > 0:
+                    st["anchor_grace"][i] -= iters_per_replica
                 elif s_i < pb_s - cfg.anchor_margin:
                     _restore_replica(st, cfg, i, st["pbest_grids"][i], cfg.anchor_kick)
                     st["n_anchor_snaps"] += 1
@@ -721,6 +763,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
                 else:
                     src_grid = None
                 _restore_replica(st, cfg, i, src_grid, kick_strength=kick)
+                st["anchor_grace"][i] = cfg.anchor_grace_iters
                 if cfg.search_mode == "anneal":
                     st["cycle_pos"][i] = 0
                     st["temps"][i] = st["t0"] * cfg.reheat
@@ -741,7 +784,16 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             mean_e = float(np.mean(st["energies"]))
             total_accept = int(np.sum(st["accept_counter"]))
             total_moves = int(np.sum(st["move_counter"]))
-            accept_rate = total_accept / max(total_moves, 1)
+            accept_life = total_accept / max(total_moves, 1)
+            recent_accept = total_accept - prev_total_accept
+            recent_moves = total_moves - prev_total_moves
+            accept_recent = recent_accept / max(recent_moves, 1)
+            # Number of replicas whose score changed since the last print --
+            # a direct, unambiguous "is the search actually moving" signal.
+            # A frozen server (all replica scores bit-for-bit unchanged for
+            # minutes) shows n_moved=0 every single print, which accept_life
+            # alone could never surface once enough history had accumulated.
+            n_moved = int(np.sum(st["scores_arr"] != prev_scores_snapshot))
             # Diagnostic for how far the live replica population has
             # drifted from best_grid -- this is what exposed the solver
             # random-walking near score ~1000 while best_score sat at
@@ -754,19 +806,24 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             _log(f"[sa814] iter={st['total_iters']:>12d}  t={st['elapsed_seconds']:>7.1f}s  "
                   f"best={st['best_score']:>5d}  cur_best={cur_best_score:>5d}  "
                   f"rep_score=[{rep_score_min},{rep_score_med:.0f},{rep_score_max}]  "
+                  f"n_moved={n_moved:>3d}  "
                   f"anchor_gap={anchor_gap:.0f}  "
-                  f"mean_E={mean_e:>10.2f}  accept={accept_rate:>5.1%}  "
+                  f"mean_E={mean_e:>10.2f}  accept_recent={accept_recent:>5.1%}  accept_life={accept_life:>5.1%}  "
                   f"T=[{np.min(st['temps']):.4g},{np.max(st['temps']):.4g}]  "
                   f"{measured_iters_per_sec:>10.0f} it/s")
             _safe_checkpoint_io("append_progress", checkpoint.append_progress, run_dir, {
                 "iter": st["total_iters"], "elapsed": round(st["elapsed_seconds"], 1),
                 "best_score": st["best_score"], "mean_energy": round(mean_e, 3),
-                "accept_rate": round(accept_rate, 4),
+                "accept_life": round(accept_life, 4), "accept_recent": round(accept_recent, 4),
+                "n_moved": n_moved,
                 "T_min": float(np.min(st["temps"])), "T_max": float(np.max(st["temps"])),
                 "rep_score_min": rep_score_min, "rep_score_med": rep_score_med,
                 "rep_score_max": rep_score_max, "anchor_gap": round(anchor_gap, 1),
                 "n_snaps": st["n_anchor_snaps"], "desyncs": st["desync_count"],
             })
+            prev_total_accept = total_accept
+            prev_total_moves = total_moves
+            prev_scores_snapshot = st["scores_arr"].copy()
             last_print = now
 
         if cfg.max_seconds is not None and st["elapsed_seconds"] >= cfg.max_seconds:
