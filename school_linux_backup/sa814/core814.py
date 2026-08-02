@@ -1042,7 +1042,7 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
                  edge_positions, move_probs, p_edge,
                  w_score, w_look, w_count, w_heur, w_triple,
                  want_count, look_window, count_lo, count_hi,
-                 accept_mode, iters, accept_counter, move_counter,
+                 accept_mode, iters, accept_counter, move_counter, move_accept_counter,
                  k_weights_avoid, k_weights_swap, k_weights_remap,
                  k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
                  k_attempt_remap, k_accept_remap):
@@ -1137,6 +1137,8 @@ def _anneal_one(i, grids, dmasks, stamps, gens, energies, scores_arr, looks_arr,
                       cell_r_buf, cell_c_buf, orig_val_buf)
 
         move_counter[i, move_id] += 1
+        if accept:
+            move_accept_counter[i, move_id] += 1
 
         # --adaptive-k bookkeeping: only MOVE_AVOID_REPEAT/MOVE_SWAP_ADJACENT/
         # MOVE_REMAP report a real (k_idx, postype) via params[3]/params[4]
@@ -1204,7 +1206,7 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
               w_score, w_look, w_count, w_heur, w_triple,
               want_count, look_window, count_lo, count_hi,
               accept_mode, iters_per_segment, n_segments, do_swaps,
-              accept_counter, move_counter, swap_accept_counter, swap_attempt_counter,
+              accept_counter, move_counter, move_accept_counter, swap_accept_counter, swap_attempt_counter,
               k_weights_avoid, k_weights_swap, k_weights_remap,
               k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
               k_attempt_remap, k_accept_remap):
@@ -1227,7 +1229,7 @@ def run_block(grids, dmasks, stamps, gens, energies, scores_arr, looks_arr, coun
                         edge_positions, move_probs, p_edge,
                         w_score, w_look, w_count, w_heur, w_triple,
                         want_count, look_window, count_lo, count_hi,
-                        accept_mode, iters_per_segment, accept_counter, move_counter,
+                        accept_mode, iters_per_segment, accept_counter, move_counter, move_accept_counter,
                         k_weights_avoid, k_weights_swap, k_weights_remap,
                         k_attempt_avoid, k_accept_avoid, k_attempt_swap, k_accept_swap,
                         k_attempt_remap, k_accept_remap)

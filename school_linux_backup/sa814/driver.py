@@ -41,6 +41,43 @@ def _geometric_ladder(t0: float, t_end: float, n: int) -> np.ndarray:
     return np.array([t0 * (ratio ** (i / (n - 1))) for i in range(n)], dtype=np.float64)
 
 
+def _energy_for(cfg: SAConfig, grid: np.ndarray, s: int, l: int, c: int) -> float:
+    """energy_of() needs heur/triples, but three call sites (_fresh_state,
+    _resumed_state, _reseed_replica) were passing 0.0/0.0 regardless of
+    cfg.w_heur/cfg.w_triple, so the energy they computed for scores_arr's
+    initial/reseeded entries didn't match what run_block's kernel actually
+    scores replicas by. Only pay for the (grid-wide) heur/triple scan when
+    its weight is nonzero, matching how run_block already skips it."""
+    heur = core.heur_chain_variance(grid) if cfg.w_heur != 0.0 else 0.0
+    triples = float(core.count_triple_chains(grid)) if cfg.w_triple != 0.0 else 0.0
+    return core.energy_of(s, l, c, heur, triples, cfg.w_score, cfg.w_look,
+                           cfg.w_count, cfg.w_heur, cfg.w_triple)
+
+
+def _fresh_verify_scratch() -> dict:
+    """Standalone scratch buffers for _rescore(), independent of any
+    replica's own dmask/stamp/gen -- so verification never shares (and can
+    never be corrupted by) the same memo cache bug that caused it to be
+    needed in the first place (see _reseed_replica's stamps/gens fix)."""
+    return dict(
+        dmask=np.zeros((10, core.ROWS), dtype=np.int64),
+        stamp=np.full(core.UPPER, -1, dtype=np.int64),
+        buf=np.zeros(core.DIGIT_BUF_LEN, dtype=np.int64),
+        gen=0,
+    )
+
+
+def _rescore(cfg: SAConfig, grid: np.ndarray, scratch: dict):
+    """Independently re-evaluates `grid` from scratch (fresh dmask, fresh
+    gen so no stale stamp can be reused) instead of trusting scores_arr/
+    energies, which are kernel-maintained bookkeeping that can desync from
+    the actual grid contents (see _reseed_replica's stale-memo bug)."""
+    core.build_dmask(np.ascontiguousarray(grid), scratch["dmask"])
+    scratch["gen"] += 1
+    return core.evaluate(scratch["dmask"], scratch["stamp"], scratch["gen"], cfg.look_window,
+                          cfg.count_lo, cfg.count_hi, cfg.want_count, scratch["buf"])
+
+
 def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Generator):
     R = cfg.replicas
     grids = seeding.build_initial_replicas(R, data_dir, cfg.seed_file, run_dir, rng,
@@ -62,8 +99,7 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
         s, l, c = core.evaluate(dmasks[i], stamps[i], 1, cfg.look_window, cfg.count_lo,
                                  cfg.count_hi, cfg.want_count, tmp_buf)
         scores_arr[i], looks_arr[i], counts_arr[i] = s, l, c
-        energies[i] = core.energy_of(s, l, c, 0.0, 0.0, cfg.w_score, cfg.w_look, cfg.w_count,
-                                      cfg.w_heur, cfg.w_triple)
+        energies[i] = _energy_for(cfg, grids[i], s, l, c)
 
     t0, t_end, up_frac = core.calibrate_temperature(
         grids[0].copy(), dmasks[0].copy(), stamps[0].copy(), 1, rng_states[0].copy(),
@@ -85,6 +121,7 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
     cycle_pos = np.zeros(R, dtype=np.int64)
     accept_counter = np.zeros(R, dtype=np.int64)
     move_counter = np.zeros((R, core.N_MOVES), dtype=np.int64)
+    move_accept_counter = np.zeros((R, core.N_MOVES), dtype=np.int64)
     swap_accept = np.zeros(max(R - 1, 0), dtype=np.int64)
     swap_attempt = np.zeros(max(R - 1, 0), dtype=np.int64)
 
@@ -98,6 +135,7 @@ def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Ge
         scores_arr=scores_arr, looks_arr=looks_arr, counts_arr=counts_arr, energies=energies,
         temps=temps, hist=hist, lahc_pos=lahc_pos, cycle_pos=cycle_pos,
         accept_counter=accept_counter, move_counter=move_counter,
+        move_accept_counter=move_accept_counter,
         swap_accept=swap_accept, swap_attempt=swap_attempt,
         best_grid=grids[best_idx].copy(), best_score=int(scores_arr[best_idx]),
         best_energy=float(energies[best_idx]),
@@ -195,8 +233,7 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
         s, l, c = core.evaluate(dmasks[i], stamps[i], 1, cfg.look_window, cfg.count_lo,
                                  cfg.count_hi, cfg.want_count, tmp_buf)
         scores_arr[i], looks_arr[i], counts_arr[i] = s, l, c
-        energies[i] = core.energy_of(s, l, c, 0.0, 0.0, cfg.w_score, cfg.w_look, cfg.w_count,
-                                      cfg.w_heur, cfg.w_triple)
+        energies[i] = _energy_for(cfg, grids[i], s, l, c)
 
     temps = np.empty(R, dtype=np.float64)
     temps[:n_common] = ck.temps[:n_common]
@@ -222,6 +259,9 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
     # rather than erroring, since move_counter is just a stat, not real state.
     old_n_moves = min(ck.move_counter.shape[1], core.N_MOVES)
     move_counter[:n_common, :old_n_moves] = ck.move_counter[:n_common, :old_n_moves]
+    move_accept_counter = np.zeros((R, core.N_MOVES), dtype=np.int64)
+    old_n_moves_acc = min(ck.move_accept_counter.shape[1], core.N_MOVES)
+    move_accept_counter[:n_common, :old_n_moves_acc] = ck.move_accept_counter[:n_common, :old_n_moves_acc]
     swap_accept = np.zeros(max(R - 1, 0), dtype=np.int64)
     swap_attempt = np.zeros(max(R - 1, 0), dtype=np.int64)
 
@@ -249,6 +289,7 @@ def _resumed_state(ck: checkpoint.CheckpointState, cfg: SAConfig, rng: np.random
         scores_arr=scores_arr, looks_arr=looks_arr, counts_arr=counts_arr, energies=energies,
         temps=temps, hist=hist, lahc_pos=lahc_pos, cycle_pos=cycle_pos,
         accept_counter=accept_counter, move_counter=move_counter,
+        move_accept_counter=move_accept_counter,
         swap_accept=swap_accept, swap_attempt=swap_attempt,
         best_grid=ck.best_grid.copy(), best_score=int(ck.best_score), best_energy=float(ck.best_energy),
         total_iters=int(ck.total_iters), iters_since_best=int(ck.iters_since_best),
@@ -275,6 +316,7 @@ def _to_checkpoint_state(st: dict) -> checkpoint.CheckpointState:
         k_pool_attempt_remap=st["k_pool_attempt_remap"], k_pool_accept_remap=st["k_pool_accept_remap"],
         k_weights_avoid=st["k_weights_avoid"], k_weights_swap=st["k_weights_swap"],
         k_weights_remap=st["k_weights_remap"], iters_since_k_update=st["iters_since_k_update"],
+        move_accept_counter=st["move_accept_counter"],
     )
 
 
@@ -282,16 +324,22 @@ def _reseed_replica(st: dict, cfg: SAConfig, i: int, from_best: bool, kick_stren
     if from_best:
         st["grids"][i] = st["best_grid"].copy()
         core.build_dmask(st["grids"][i], st["dmasks"][i])
-        st["stamps"][i, :] = -1
-        st["gens"][i] = 1
     if kick_strength > 0:
         core.apply_kick(st["rng_states"][i], st["grids"][i], st["dmasks"][i], kick_strength)
+    # stamps[i]/gens[i] memoize which values were formable for the PREVIOUS
+    # grid this replica held. That used to only get invalidated inside
+    # `if from_best:`, so a kick-only reseed (from_best=False) fed evaluate()
+    # the old grid's memo against the new (kicked) grid -- every value the
+    # old grid could form got treated as still-formable without being
+    # retested, inflating the returned score by up to look_window. Always
+    # invalidate after any grid mutation, before evaluate() below.
+    st["stamps"][i, :] = -1
+    st["gens"][i] = 1
     tmp_buf = st["digit_bufs"][i]
     s, l, c = core.evaluate(st["dmasks"][i], st["stamps"][i], st["gens"][i], cfg.look_window,
                              cfg.count_lo, cfg.count_hi, cfg.want_count, tmp_buf)
     st["scores_arr"][i], st["looks_arr"][i], st["counts_arr"][i] = s, l, c
-    st["energies"][i] = core.energy_of(s, l, c, 0.0, 0.0, cfg.w_score, cfg.w_look, cfg.w_count,
-                                        cfg.w_heur, cfg.w_triple)
+    st["energies"][i] = _energy_for(cfg, st["grids"][i], s, l, c)
     st["hist"][i, :] = st["energies"][i]
     st["lahc_pos"][i] = 0
 
@@ -315,12 +363,18 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
     run_dir = checkpoint.run_root(base_dir, cfg.run_name)
     cfg_hash = cfg.cfg_hash()
     data_dir = runtime.data_dir()
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(cfg.rng_seed)
 
     threads = cfg.threads or runtime.default_threads()
     numba.set_num_threads(threads)
     _log(f"[sa814] run='{cfg.run_name}' mode={cfg.search_mode} accept={cfg.accept_mode} "
           f"replicas={cfg.replicas} threads={threads} cfg_hash={cfg_hash}")
+    if cfg.rng_seed is None:
+        _log("[sa814] warning: no --rng-seed given; this run is not reproducible "
+              "(two runs with identical flags will still diverge). Pass --rng-seed "
+              "<int> for comparable A/B runs.")
+    else:
+        _log(f"[sa814] rng_seed={cfg.rng_seed}")
     if not cfg.seed_from_corpus:
         _log("[sa814] --no-seed: ignoring data/*.txt and any prior run outputs, "
               "starting every replica from a fresh random grid")
@@ -328,6 +382,8 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
         _log(f"[sa814] --adaptive-k: learning avoid_repeat/swap_adjacent/remap's k-distribution "
               f"from observed accept rates (update every {cfg.adaptive_k_update_iters} iters, "
               f"decay={cfg.adaptive_k_decay}, smoothing={cfg.adaptive_k_smoothing})")
+
+    verify_scratch = _fresh_verify_scratch()
 
     st = None
     if cfg.resume and not cfg.fresh:
@@ -338,10 +394,18 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
                 _log(f"[sa814] checkpoint cfg_hash mismatch "
                       f"({meta.get('cfg_hash')} != {cfg_hash}); reseeding fresh from its best grid only.")
                 st = _fresh_state(cfg, run_dir, data_dir, rng)
-                if ck.best_score > st["best_score"]:
+                # Don't trust ck.best_score/best_energy blindly -- re-verify
+                # against the actual stored grid before letting it override
+                # the freshly-seeded best (see _rescore's docstring).
+                v_s, v_l, v_c = _rescore(cfg, ck.best_grid, verify_scratch)
+                v_e = _energy_for(cfg, ck.best_grid, v_s, v_l, v_c)
+                if v_s != int(ck.best_score):
+                    _log(f"[sa814] warning: checkpoint best_grid claimed score={ck.best_score} "
+                          f"but verified score={v_s}; using verified value.")
+                if v_s > st["best_score"]:
                     st["best_grid"] = ck.best_grid.copy()
-                    st["best_score"] = int(ck.best_score)
-                    st["best_energy"] = float(ck.best_energy)
+                    st["best_score"] = v_s
+                    st["best_energy"] = v_e
                     st["grids"][0] = ck.best_grid.copy()
                     core.build_dmask(st["grids"][0], st["dmasks"][0])
             else:
@@ -349,6 +413,21 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
 
     if st is None:
         st = _fresh_state(cfg, run_dir, data_dir, rng)
+
+    # One-time startup verification: st["best_grid"] came from either a
+    # fresh seed's scores_arr/energies bookkeeping or a resumed checkpoint's
+    # stored best_score/best_energy, neither of which is re-checked against
+    # the grid itself elsewhere. Do it once here so write_best below (and
+    # every later comparison against st["best_score"]) starts from a
+    # verified baseline.
+    v_s, v_l, v_c = _rescore(cfg, st["best_grid"], verify_scratch)
+    v_e = _energy_for(cfg, st["best_grid"], v_s, v_l, v_c)
+    if v_s != st["best_score"]:
+        _log(f"[sa814] warning: startup best_grid claimed score={st['best_score']} "
+              f"but verified score={v_s}; correcting.")
+    st["best_score"] = v_s
+    st["best_energy"] = v_e
+    st["desync_count"] = 0
 
     edge_pos = core.build_edge_positions()
     move_probs = np.array(cfg.move_probs(), dtype=np.float64)
@@ -390,7 +469,8 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             cfg.w_score, cfg.w_look, cfg.w_count, cfg.w_heur, cfg.w_triple, cfg.want_count,
             cfg.look_window, cfg.count_lo, cfg.count_hi,
             accept_mode, iters_per_segment, n_segments, do_swaps,
-            st["accept_counter"], st["move_counter"], st["swap_accept"], st["swap_attempt"],
+            st["accept_counter"], st["move_counter"], st["move_accept_counter"],
+            st["swap_accept"], st["swap_attempt"],
             st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],
             st["k_attempt_avoid"], st["k_accept_avoid"], st["k_attempt_swap"], st["k_accept_swap"],
             st["k_attempt_remap"], st["k_accept_remap"],
@@ -419,10 +499,42 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             n_segments = max(1, target_total_iters // (cfg.replicas * iters_per_segment))
 
         cur_best_idx = int(np.argmax(st["scores_arr"]))
+        # cur_best_score/cur_best_energy are used below both for the periodic
+        # log line (informational, every block) and for the promotion check
+        # (correctness-critical, re-verified below when a promotion looks
+        # possible) -- always set from the claimed values first so the log
+        # line has something current even on blocks with no promotion.
         cur_best_score = int(st["scores_arr"][cur_best_idx])
         cur_best_energy = float(st["energies"][cur_best_idx])
-        if (cur_best_score > st["best_score"] or
-                (cur_best_score == st["best_score"] and cur_best_energy > st["best_energy"])):
+        claim_score, claim_energy = cur_best_score, cur_best_energy
+        # energy_of() is lower-is-better (core814.energy_of returns a
+        # negated goodness), so the tie-break must prefer the LOWER energy.
+        # This used to be `>`, which on an exact score tie replaced
+        # best_grid with the worse of the two grids.
+        promotable = (claim_score > st["best_score"] or
+                      (claim_score == st["best_score"] and claim_energy < st["best_energy"]))
+        if promotable:
+            # scores_arr/energies are kernel-maintained bookkeeping that can
+            # desync from the grid itself (see _reseed_replica's stale-memo
+            # fix) -- re-verify independently before promoting/persisting,
+            # and self-correct the bookkeeping either way so a stale desync
+            # doesn't keep re-triggering every block.
+            v_s, v_l, v_c = _rescore(cfg, st["grids"][cur_best_idx], verify_scratch)
+            v_e = _energy_for(cfg, st["grids"][cur_best_idx], v_s, v_l, v_c)
+            if v_s != claim_score or abs(v_e - claim_energy) > 1e-6:
+                st["desync_count"] += 1
+                _log(f"[sa814] warning: replica {cur_best_idx} score desync "
+                      f"(kernel claimed score={claim_score} energy={claim_energy:.3f}; "
+                      f"verified score={v_s} energy={v_e:.3f}); self-correcting "
+                      f"(desync_count={st['desync_count']}).")
+                st["scores_arr"][cur_best_idx] = v_s
+                st["looks_arr"][cur_best_idx] = v_l
+                st["counts_arr"][cur_best_idx] = v_c
+                st["energies"][cur_best_idx] = v_e
+            cur_best_score, cur_best_energy = v_s, v_e
+            promotable = (cur_best_score > st["best_score"] or
+                          (cur_best_score == st["best_score"] and cur_best_energy < st["best_energy"]))
+        if promotable:
             st["best_score"] = cur_best_score
             st["best_energy"] = cur_best_energy
             st["best_grid"] = st["grids"][cur_best_idx].copy()
@@ -448,10 +560,22 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
 
         if st["iters_since_best"] >= cfg.stagnation_iters:
             st["stagnant_cycles"] += 1
-            use_best = st["stagnant_cycles"] < 3 or cfg.restart_from != "best"
+            # config814.py's restart_from docstring: "best" restarts every
+            # replica from best_grid each reheat, but falls back to
+            # kicking the replica's own current state after 3 consecutive
+            # stagnant cycles (to add diversity once repeatedly returning
+            # to best isn't escaping the plateau); "current" should mean
+            # never restart from best at all. The old `or cfg.restart_from
+            # != "best"` made the "current" branch always True (the
+            # opposite of what it's supposed to do) while leaving "best"'s
+            # own fallback intact -- fixed to match the documented intent.
+            if cfg.restart_from == "best":
+                use_best = st["stagnant_cycles"] < 3
+            else:
+                use_best = False
             _log(f"[sa814] stagnation ({st['iters_since_best']} iters without improvement) -> "
                   f"reheating (stagnant_cycles={st['stagnant_cycles']}, "
-                  f"restart_from={'best' if use_best else 'current'})")
+                  f"restart_from={cfg.restart_from}, using={'best' if use_best else 'current'})")
             for i in range(cfg.replicas):
                 kick = 2 + (i % 6)
                 _reseed_replica(st, cfg, i, from_best=use_best, kick_strength=kick)
@@ -476,8 +600,19 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             total_accept = int(np.sum(st["accept_counter"]))
             total_moves = int(np.sum(st["move_counter"]))
             accept_rate = total_accept / max(total_moves, 1)
+            # Diagnostic for how far the live replica population has
+            # drifted from best_grid -- this is what exposed the solver
+            # random-walking near score ~1000 while best_score sat at
+            # 5000+ (see the stagnation investigation). Not gated behind
+            # any flag: it's just a median() and a subtraction.
+            rep_score_min = int(np.min(st["scores_arr"]))
+            rep_score_med = float(np.median(st["scores_arr"]))
+            rep_score_max = int(np.max(st["scores_arr"]))
+            anchor_gap = st["best_score"] - rep_score_med
             _log(f"[sa814] iter={st['total_iters']:>12d}  t={st['elapsed_seconds']:>7.1f}s  "
                   f"best={st['best_score']:>5d}  cur_best={cur_best_score:>5d}  "
+                  f"rep_score=[{rep_score_min},{rep_score_med:.0f},{rep_score_max}]  "
+                  f"anchor_gap={anchor_gap:.0f}  "
                   f"mean_E={mean_e:>10.2f}  accept={accept_rate:>5.1%}  "
                   f"T=[{np.min(st['temps']):.4g},{np.max(st['temps']):.4g}]  "
                   f"{measured_iters_per_sec:>10.0f} it/s")
@@ -486,6 +621,9 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
                 "best_score": st["best_score"], "mean_energy": round(mean_e, 3),
                 "accept_rate": round(accept_rate, 4),
                 "T_min": float(np.min(st["temps"])), "T_max": float(np.max(st["temps"])),
+                "rep_score_min": rep_score_min, "rep_score_med": rep_score_med,
+                "rep_score_max": rep_score_max, "anchor_gap": round(anchor_gap, 1),
+                "n_snaps": st.get("n_anchor_snaps", 0), "desyncs": st["desync_count"],
             })
             last_print = now
 

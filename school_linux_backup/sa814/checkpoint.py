@@ -100,6 +100,12 @@ class CheckpointState:
     k_weights_swap: np.ndarray = None         # f8 [2, 8]
     k_weights_remap: np.ndarray = None        # f8 [9]
     iters_since_k_update: int = 0
+    # Per-move accept counts (move_counter above is attempts). Split out so
+    # per-move accept RATE is directly computable without re-deriving it
+    # from move_counter and a separate accepted-only tally -- used to watch
+    # individual move types (e.g. remap) go effectively dead as max_worsening
+    # kicks in (Phase 2) or to A/B a new move type's accept rate (Phase 4).
+    move_accept_counter: np.ndarray = None    # i8 [R, N_MOVES]
 
 
 def run_root(base_dir: Path, run_name: str) -> Path:
@@ -149,6 +155,7 @@ def save(run_dir: Path, state: CheckpointState, cfg_dict: dict, cfg_hash: str) -
             k_weights_swap=state.k_weights_swap,
             k_weights_remap=state.k_weights_remap,
             iters_since_k_update=np.int64(state.iters_since_k_update),
+            move_accept_counter=state.move_accept_counter,
             format_version=np.int64(FORMAT_VERSION),
         )
         f.flush()
@@ -214,6 +221,8 @@ def _load_npz(path: Path) -> Optional[CheckpointState]:
                 k_weights_swap=z["k_weights_swap"] if "k_weights_swap" in z else np.ones((2, 8)),
                 k_weights_remap=z["k_weights_remap"] if "k_weights_remap" in z else np.ones(9),
                 iters_since_k_update=int(z["iters_since_k_update"]) if "iters_since_k_update" in z else 0,
+                move_accept_counter=(z["move_accept_counter"] if "move_accept_counter" in z
+                                      else np.zeros_like(z["move_counter"])),
             )
     except Exception as exc:  # noqa: BLE001 - corrupt/partial file, fall back
         sys.stdout.write(f"[checkpoint] failed to load {path}: {exc!r}\n")
@@ -262,9 +271,32 @@ def append_record(run_dir: Path, grid: np.ndarray, score: int, total_iters: int,
 
 def append_progress(run_dir: Path, row: dict) -> None:
     path = run_dir / "progress.csv"
+    fieldnames = list(row.keys())
     is_new = not path.exists()
+    if not is_new:
+        # append_progress only ever wrote a header when the file didn't
+        # exist yet, so a run resumed after new columns were added (e.g.
+        # Phase 0's rep_score_min/med/max, anchor_gap, n_snaps, desyncs)
+        # would silently misalign every row against the old header instead
+        # of erroring. Detect a column-set change and roll over to a new
+        # file rather than corrupt the existing one.
+        with open(path, "r", newline="", encoding="utf-8") as f:
+            existing_header = f.readline().rstrip("\r\n")
+        if existing_header != ",".join(fieldnames):
+            n = 2
+            while True:
+                candidate = run_dir / f"progress.{n}.csv"
+                if not candidate.exists():
+                    path, is_new = candidate, True
+                    break
+                with open(candidate, "r", newline="", encoding="utf-8") as f:
+                    candidate_header = f.readline().rstrip("\r\n")
+                if candidate_header == ",".join(fieldnames):
+                    path, is_new = candidate, False
+                    break
+                n += 1
     with open(path, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(row.keys()))
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         if is_new:
             writer.writeheader()
         writer.writerow(row)
