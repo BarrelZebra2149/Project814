@@ -39,12 +39,12 @@ GRID_SIZE = GRID_ROWS * GRID_COLS
 MAX_SCORE = 8142
 
 # Move operator names, in the fixed order used by core814's move dispatcher.
-MOVE_NAMES = ("copy_neighbor", "swap_adjacent", "avoid_repeat", "remap")
+MOVE_NAMES = ("copy_neighbor", "swap_adjacent", "avoid_repeat", "remap", "repair")
 
 # Acceptance-rule / search-mode choices exposed on the CLI.
 ACCEPT_MODES = ("sa", "lahc", "dlas")
 SEARCH_MODES = ("pt", "anneal")
-RESTART_MODES = ("best", "current")
+RESTART_MODES = ("best", "pbest", "current")
 
 
 @dataclass
@@ -129,6 +129,15 @@ class SAConfig:
                            # k=2) and remap_full (relabel all 10 via a random
                            # permutation, k=10) were really the same idea at different
                            # k, so their shares combine here (0.01 + 0.05 -> 0.06).
+    p_repair: float = 0.0  # targeted move: computes exactly which single cell/digit
+                            # change would let the grid form cur_score+1 (the specific
+                            # number that's failing right now), by re-running
+                            # is_formable's frontier propagation and capturing where
+                            # the walk dies instead of just returning False -- see
+                            # core814.apply_repair. A calculation, not a guess, unlike
+                            # every other move here. Default 0.0 (off) until an A/B
+                            # confirms its accept rate actually beats copy_neighbor's;
+                            # enable with --p-repair.
     p_edge_bias: float = 0.5     # probability a local move targets a border cell
 
     # --- adaptive k-distribution learning (opt-in) ----------------------------
@@ -158,7 +167,101 @@ class SAConfig:
     cycle_iters: int = 2_000_000     # L_CYCLE: iterations per geometric-cooling cycle
     reheat: float = 0.6              # T <- T0 * reheat on stagnation-triggered reheat
     stagnation_iters: int = 500_000  # iters without a new best before reheating
-    restart_from: str = "best"       # "best" or "current"; falls back after 3 stagnant cycles
+    restart_from: str = "pbest"      # "best" (falls back to "current" after 3 stagnant
+                                      # cycles), "pbest" (each replica restarts from its
+                                      # own personal best -- default, see anchor_* below),
+                                      # or "current" (never restart, always kick in place)
+
+    # --- personal-best anchoring -----------------------------------------------
+    # Real runs showed replicas random-walking far below best_score for the
+    # entire run (accept rate flat ~40-45%, replica-pair Hamming distance
+    # statistically indistinguishable from independent random grids) --
+    # once a catastrophic move collapses a replica's score by thousands,
+    # nothing pulls it back toward the frontier it came from. This tracks
+    # each replica's OWN best (not the global best, which would collapse
+    # all replicas onto one basin -- exactly what stagnation-triggered
+    # reheat already does) and snaps a replica back to it once it's drifted
+    # anchor_margin points below, instead of only checking at
+    # stagnation_iters intervals.
+    anchor_enabled: bool = True
+    anchor_margin: int = 300    # pbest - look_window(400) is where the `look` energy
+                                # term goes fully blind to the replica's own frontier
+                                # (no formable values left in its window to see); 300
+                                # keeps snapback comfortably inside that horizon.
+    anchor_kick: int = 0        # cells randomized on snapback. 0 by default -- measured
+                                # empirically (see the stagnation investigation) that any
+                                # nonzero kick here is self-defeating near a high score:
+                                # a real 8-replica run seeded from a 7666 grid held
+                                # rock-steady (anchor_gap=0) for 33s, then a
+                                # stagnation-triggered reheat's kick collapsed it to
+                                # ~1000-1700, and from then on EVERY anchor snapback
+                                # (1104 of them logged) immediately re-collapsed itself,
+                                # because kick=3 has the same near-certain chance of
+                                # breaking a fragile high-score grid as the collapse that
+                                # triggered the snap in the first place (median positive
+                                # dE near a 7666 grid is ~6129 -- see preset_score_first's
+                                # docstring). anchor_gap never recovered from ~6500 for
+                                # the rest of that run. A snapback with kick=0 restores
+                                # the pristine known-good grid and lets the normal
+                                # accept/reject loop explore from there instead.
+    elite_size: int = 6         # top-N distinct grids tracked for resampling below
+    elite_resample_iters: int = 0   # iters between reassigning the worst pbest_scores
+                                     # replicas a random elite grid ("go with the
+                                     # winners"). 0 = off; only enable after measuring
+                                     # anchoring alone, since it's a second, compounding
+                                     # diversity mechanism
+
+    # --- DLAS trapdoor prevention ------------------------------------------------
+    # The DLAS accept rule (core814._anneal_one) is `accept if newE == curE or
+    # newE < hmax`, where hmax = max(history). On dlas.hpp's original smooth
+    # landscape that's a self-tightening bar: the chain descends, hmax follows
+    # it down. On 814-2's cliff (breaking one small number collapses score by
+    # thousands) it's a one-way ratchet instead: one catastrophic accept fills
+    # history with terrible energies, hmax explodes, and nearly every
+    # subsequent proposal satisfies newE < hmax -- an unbiased random walk
+    # (confirmed empirically: accept rate sat at a flat 40-45% for the ENTIRE
+    # duration of every real run analyzed, never declining as score rose).
+    # Phase 1's anchoring recovers from this after the fact; these two fields
+    # attack the mechanism that causes it.
+    max_worsening: float = 25.0   # hard ceiling on hmax: never more than curE +
+                                   # max_worsening above the current energy, no matter
+                                   # how bad history has become. 0.0 disables. Blocks
+                                   # the catastrophic (score-in-the-thousands) accepts
+                                   # outright rather than just recovering from them.
+                                   # Known side effect: `remap` (a global digit
+                                   # relabeling) will go effectively dead above a few
+                                   # hundred score points, since it almost always
+                                   # collapses a high-scoring grid outright -- this is
+                                   # not a bug to work around, it's max_worsening
+                                   # correctly recognizing remap can't safely fire there.
+    hist_reset_band: float = 2.0  # every flat history fill (fresh start, resume,
+                                   # reheat/anchor restore) sets hist[:] = energy +
+                                   # hist_reset_band instead of exactly energy. At
+                                   # exactly energy, hmax == curE right after a reset,
+                                   # which makes DLAS accept ONLY strict improvements --
+                                   # pure greedy, unable to move at all once stuck. A
+                                   # small band lets the replica drift slightly (in
+                                   # score-point-equivalent units, since w_score=1.0)
+                                   # instead of freezing solid.
+
+    # --- exact-state cycle prevention --------------------------------------------
+    # Once Phase 1/2 keep a replica anchored near its own frontier instead of
+    # randomly walking the whole state space, re-visiting a grid it already
+    # tried (and rejected/reverted from) becomes a real, measurable possibility
+    # rather than a near-zero-probability event in a 10^112-state space. Each
+    # replica keeps a ring buffer of Zobrist hashes (core814.ZOBRIST) of its
+    # last cycle_buffer accepted states; a proposed move whose resulting grid
+    # matches one of them is rejected outright UNLESS it's actually an
+    # improvement over the replica's current energy (aspiration -- a genuinely
+    # better state is never wasted even if visited before).
+    cycle_buffer: int = 64   # 0 = off. Deliberately much smaller than a classic
+                              # tabu list's few-thousand-entry memory: the check is
+                              # a linear scan over cycle_buffer entries done EVERY
+                              # iteration (a hash set would avoid this, but adds
+                              # real complexity for a numba kernel), so this trades
+                              # memory depth for per-iteration cost. 64 is short-
+                              # term "don't immediately undo what I just tried"
+                              # memory, not a full visited-set.
 
     # --- parallel tempering ----------------------------------------------------
     swap_interval: int = 2000    # iterations between adjacent-replica swap attempts
@@ -176,6 +279,7 @@ class SAConfig:
             self.p_swap_adjacent,
             self.p_avoid_repeat,
             self.p_remap,
+            self.p_repair,
         )
 
     def cfg_hash(self) -> str:
@@ -184,9 +288,11 @@ class SAConfig:
             "accept_mode", "search_mode", "lahc_len",
             "w_score", "w_look", "w_count", "w_heur", "w_triple", "want_count",
             "look_window", "count_lo", "count_hi",
-            "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap",
+            "p_copy_neighbor", "p_swap_adjacent", "p_avoid_repeat", "p_remap", "p_repair",
             "p_edge_bias", "replicas",
             "adaptive_k", "adaptive_k_update_iters", "adaptive_k_smoothing", "adaptive_k_decay",
+            "anchor_enabled", "anchor_margin", "anchor_kick", "elite_size", "elite_resample_iters",
+            "max_worsening", "hist_reset_band", "cycle_buffer",
         ]
         d = asdict(self)
         payload = json.dumps({k: d[k] for k in semantic_fields}, sort_keys=True)
@@ -290,6 +396,11 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
     p.add_argument("--w-heur", type=float, default=None)
     p.add_argument("--w-triple", type=float, default=None)
     p.add_argument("--look-window", type=int, default=None)
+    p.add_argument("--p-repair", type=float, default=None,
+                    help="Move-mix share for the targeted repair move (core814."
+                         "apply_repair); 0.0 (default) disables it. The only move "
+                         "probability with a dedicated flag, since it's meant to be "
+                         "A/B tested against the default mix directly.")
 
     p.add_argument("--checkpoint-secs", type=float, default=None)
     p.add_argument("--swap-interval", type=int, default=None)
@@ -299,8 +410,25 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
     p.add_argument("--restart-from", type=str, default=None, choices=RESTART_MODES,
                     help="On a stagnation-triggered reheat: 'best' resets every replica to "
                          "best_grid (falling back to kicking its own current state after 3 "
-                         "consecutive stagnant reheats, for diversity); 'current' never resets "
-                         "to best_grid at all, always kicking in place.")
+                         "consecutive stagnant reheats, for diversity); 'pbest' (default) "
+                         "resets each replica to its OWN best grid; 'current' never resets "
+                         "to any stored grid at all, always kicking in place.")
+
+    p.add_argument("--no-anchor", action="store_true",
+                    help="Disable personal-best anchoring (see anchor_enabled).")
+    p.add_argument("--anchor-margin", type=int, default=None)
+    p.add_argument("--anchor-kick", type=int, default=None)
+    p.add_argument("--elite-size", type=int, default=None)
+    p.add_argument("--elite-resample-iters", type=int, default=None)
+
+    p.add_argument("--max-worsening", type=float, default=None,
+                    help="Hard ceiling on how bad DLAS/LAHC's history-derived accept "
+                         "bar can get; 0.0 disables. Blocks catastrophic collapse-by-"
+                         "thousands accepts outright.")
+    p.add_argument("--hist-reset-band", type=float, default=None)
+
+    p.add_argument("--cycle-buffer", type=int, default=None,
+                    help="Ring-buffer size for exact-state cycle prevention; 0 disables.")
 
     p.add_argument("--adaptive-k", action="store_true", default=None,
                     help="Learn per-k acceptance-rate weights for avoid_repeat/"
@@ -329,6 +457,9 @@ def config_from_cli(argv=None, default_preset: str = "score_first") -> SAConfig:
 
     if ns.no_seed:
         cfg.seed_from_corpus = False
+
+    if ns.no_anchor:
+        cfg.anchor_enabled = False
 
     if ns.fresh:
         cfg.resume = False

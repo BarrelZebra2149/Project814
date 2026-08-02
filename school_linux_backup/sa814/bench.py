@@ -108,11 +108,14 @@ def _make_replica_state(R, seed_grids):
     move_accept_counter = np.zeros((R, core.N_MOVES), dtype=np.int64)
     swap_accept = np.zeros(max(R - 1, 0), dtype=np.int64)
     swap_attempt = np.zeros(max(R - 1, 0), dtype=np.int64)
+    cycle_hashes = np.zeros((R, 0), dtype=np.uint64)  # cycle prevention off for the benchmark
+    cycle_write_pos = np.zeros(R, dtype=np.int64)
     return dict(grids=grids, dmasks=dmasks, stamps=stamps, gens=gens, digit_bufs=digit_bufs,
                 rng_states=rng_states, scores_arr=scores_arr, looks_arr=looks_arr,
                 counts_arr=counts_arr, energies=energies, temps=temps, hist=hist,
                 lahc_pos=lahc_pos, accept_counter=accept_counter, move_counter=move_counter,
                 move_accept_counter=move_accept_counter,
+                cycle_hashes=cycle_hashes, cycle_write_pos=cycle_write_pos,
                 swap_accept=swap_accept, swap_attempt=swap_attempt,
                 k_weights_avoid=np.ones((2, 8)), k_weights_swap=np.ones((2, 8)),
                 k_weights_remap=np.ones(9),
@@ -146,12 +149,13 @@ def bench_sa_scaling(seconds: float):
                         st["hist"], st["lahc_pos"], swap_rng,
                         edge_pos, move_probs, 0.5,
                         1.0, 0.002, 0.0, 0.0, 0.0, False, 400, 1000, 10000,
-                        core.ACCEPT_SA, 500, 2, True,
+                        core.ACCEPT_SA, 500, 2, True, 0.0,
                         st["accept_counter"], st["move_counter"], st["move_accept_counter"],
                         st["swap_accept"], st["swap_attempt"],
                         st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],
                         st["k_attempt_avoid"], st["k_accept_avoid"], st["k_attempt_swap"], st["k_accept_swap"],
-                        st["k_attempt_remap"], st["k_accept_remap"])
+                        st["k_attempt_remap"], st["k_accept_remap"],
+                        core.ZOBRIST, st["cycle_hashes"], st["cycle_write_pos"])
 
         st["accept_counter"][:] = 0
         st["move_counter"][:] = 0
@@ -165,12 +169,13 @@ def bench_sa_scaling(seconds: float):
                             st["hist"], st["lahc_pos"], swap_rng,
                             edge_pos, move_probs, 0.5,
                             1.0, 0.002, 0.0, 0.0, 0.0, False, 400, 1000, 10000,
-                            core.ACCEPT_SA, iters_per_segment, 5, True,
+                            core.ACCEPT_SA, iters_per_segment, 5, True, 0.0,
                             st["accept_counter"], st["move_counter"], st["move_accept_counter"],
                         st["swap_accept"], st["swap_attempt"],
                             st["k_weights_avoid"], st["k_weights_swap"], st["k_weights_remap"],
                             st["k_attempt_avoid"], st["k_accept_avoid"], st["k_attempt_swap"], st["k_accept_swap"],
-                            st["k_attempt_remap"], st["k_accept_remap"])
+                            st["k_attempt_remap"], st["k_accept_remap"],
+                        core.ZOBRIST, st["cycle_hashes"], st["cycle_write_pos"])
             done += R * iters_per_segment * 5
         elapsed = time.perf_counter() - t0
         _log(f"  threads={threads:>2d} replicas={R:>2d}: {done/elapsed:10.0f} iters/sec total "

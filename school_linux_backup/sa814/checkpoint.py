@@ -106,6 +106,16 @@ class CheckpointState:
     # individual move types (e.g. remap) go effectively dead as max_worsening
     # kicks in (Phase 2) or to A/B a new move type's accept rate (Phase 4).
     move_accept_counter: np.ndarray = None    # i8 [R, N_MOVES]
+    # Personal-best anchoring state (see driver.py's anchoring pass /
+    # config814.SAConfig.anchor_*). Each replica's own best grid/score/
+    # energy, independent of the global best_grid -- anchoring snaps a
+    # replica back to ITS OWN pbest (not the global best, which would
+    # collapse every replica onto one basin) once it drifts anchor_margin
+    # points below it.
+    pbest_grids: np.ndarray = None      # uint8 [R, 8, 14]
+    pbest_scores: np.ndarray = None     # i8 [R]
+    pbest_energies: np.ndarray = None   # f8 [R]
+    n_anchor_snaps: int = 0
 
 
 def run_root(base_dir: Path, run_name: str) -> Path:
@@ -156,6 +166,10 @@ def save(run_dir: Path, state: CheckpointState, cfg_dict: dict, cfg_hash: str) -
             k_weights_remap=state.k_weights_remap,
             iters_since_k_update=np.int64(state.iters_since_k_update),
             move_accept_counter=state.move_accept_counter,
+            pbest_grids=state.pbest_grids,
+            pbest_scores=state.pbest_scores,
+            pbest_energies=state.pbest_energies,
+            n_anchor_snaps=np.int64(state.n_anchor_snaps),
             format_version=np.int64(FORMAT_VERSION),
         )
         f.flush()
@@ -223,6 +237,15 @@ def _load_npz(path: Path) -> Optional[CheckpointState]:
                 iters_since_k_update=int(z["iters_since_k_update"]) if "iters_since_k_update" in z else 0,
                 move_accept_counter=(z["move_accept_counter"] if "move_accept_counter" in z
                                       else np.zeros_like(z["move_counter"])),
+                # Checkpoints saved before anchoring existed have no pbest
+                # history -- fall back to treating each replica's current
+                # grid/score/energy as its own best-known-so-far, same cold
+                # start driver._fresh_state uses for a genuinely new run.
+                pbest_grids=z["pbest_grids"] if "pbest_grids" in z else z["grids"].copy(),
+                pbest_scores=z["pbest_scores"] if "pbest_scores" in z else z["scores"].copy(),
+                pbest_energies=(z["pbest_energies"] if "pbest_energies" in z
+                                 else z["energies"].copy()),
+                n_anchor_snaps=int(z["n_anchor_snaps"]) if "n_anchor_snaps" in z else 0,
             )
     except Exception as exc:  # noqa: BLE001 - corrupt/partial file, fall back
         sys.stdout.write(f"[checkpoint] failed to load {path}: {exc!r}\n")
