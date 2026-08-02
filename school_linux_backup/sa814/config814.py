@@ -210,10 +210,26 @@ class SAConfig:
                                      # winners"). 0 = off; only enable after measuring
                                      # anchoring alone, since it's a second, compounding
                                      # diversity mechanism
-    anchor_grace_iters: int = 200_000   # iterations (per replica) of immunity from
-                                         # anchoring snapback immediately after a
-                                         # reheat restores+kicks a replica. 0 = no
-                                         # grace. Without this, restart_from='pbest'
+    anchor_grace_iters: int = 200_000   # AGGREGATE iterations (same unit as
+                                         # stagnation_iters/iters_since_best, i.e.
+                                         # replicas * iters_per_segment * n_segments
+                                         # summed across the whole population, NOT
+                                         # per replica) of immunity from anchoring
+                                         # snapback immediately after a reheat
+                                         # restores+kicks a replica. 0 = no grace.
+                                         # MUST be < stagnation_iters, or reheat
+                                         # re-arms grace faster than it can expire
+                                         # and anchoring's snapback becomes
+                                         # permanently unreachable (driver.drive()
+                                         # clamps to stagnation_iters // 2 and warns
+                                         # if this is violated -- confirmed on a
+                                         # real 16-replica production run where an
+                                         # earlier per-replica-unit bug here froze
+                                         # n_snaps immediately after the first
+                                         # reheat while anchor_gap grew past 4000
+                                         # over 6.7 hours of runtime).
+                                         #
+                                         # Without grace at all, restart_from='pbest'
                                          # reheat's kick is cancelled almost every
                                          # time: kick randomizes anchor_kick cells,
                                          # which near a high score almost always
