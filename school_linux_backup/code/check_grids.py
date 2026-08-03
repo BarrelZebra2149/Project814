@@ -4,7 +4,7 @@ import os
 import sys
 
 # ====================== CONFIGURATION ======================
-INPUT_FILE = '../data/G4_gen2.txt'
+INPUT_FILE = '../data/grid.txt'
 GRID_ROWS = 8
 GRID_COLS = 14
 GRID_SIZE = GRID_ROWS * GRID_COLS

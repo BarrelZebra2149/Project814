@@ -497,6 +497,24 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
         _log(f"[sa814] --adaptive-k: learning avoid_repeat/swap_adjacent/remap's k-distribution "
               f"from observed accept rates (update every {cfg.adaptive_k_update_iters} iters, "
               f"decay={cfg.adaptive_k_decay}, smoothing={cfg.adaptive_k_smoothing})")
+    if cfg.anchor_enabled and cfg.anchor_grace_iters >= cfg.stagnation_iters:
+        # anchor_grace_iters and iters_since_best are both aggregate-iter
+        # counters (see the anchoring pass below), so reheat re-arms grace
+        # to anchor_grace_iters every stagnation_iters aggregate iters. If
+        # anchor_grace_iters >= stagnation_iters, grace never has a chance
+        # to expire before the next reheat re-arms it -- anchoring's
+        # snapback branch becomes permanently unreachable, silently
+        # disabling the whole mechanism (confirmed on a real production
+        # run: n_snaps froze immediately after the first reheat while
+        # anchor_gap grew past 4000 over 6.7 hours). Clamp rather than
+        # just warn, since a silently-broken default is worse than a
+        # loud auto-correction.
+        clamped = cfg.stagnation_iters // 2
+        _log(f"[sa814] WARNING: anchor_grace_iters({cfg.anchor_grace_iters}) >= "
+              f"stagnation_iters({cfg.stagnation_iters}) -- reheat would re-arm anchoring's "
+              f"grace period faster than it can expire, permanently disabling snapback. "
+              f"Clamping anchor_grace_iters to {clamped}.")
+        cfg.anchor_grace_iters = clamped
 
     verify_scratch = _fresh_verify_scratch()
 
@@ -705,11 +723,29 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
             # pbest - anchor_margin" and snap straight back, undoing the kick
             # before it ever got a chance to explore (pbest is monotone, so
             # it never falls to meet the kicked replica partway). anchor_grace
-            # is a per-replica countdown (in iterations) of immunity from
-            # snapback set right after a reheat restore; it's independent of
-            # -- and always overridden by -- an actual improvement, which
-            # must be recorded the instant it happens regardless of grace.
-            iters_per_replica = iters_done // max(cfg.replicas, 1)
+            # is a countdown of immunity from snapback set right after a
+            # reheat restore; it's independent of -- and always overridden
+            # by -- an actual improvement, which must be recorded the
+            # instant it happens regardless of grace.
+            #
+            # Unit bug fixed here: `iters_since_best`/`stagnation_iters`
+            # (which drives how often reheat re-arms grace, below) are
+            # counted in AGGREGATE iters (`iters_done` is already
+            # `replicas * iters_per_segment * n_segments`), but this used
+            # to decrement grace by `iters_done // replicas` (per-replica
+            # units). With R replicas, reheat re-arms grace to
+            # anchor_grace_iters every `stagnation_iters` aggregate iters =
+            # `stagnation_iters / R` PER-REPLICA iters, while burning grace
+            # down from anchor_grace_iters took `anchor_grace_iters`
+            # per-replica iters -- R times slower than it needed to be. At
+            # the default anchor_grace_iters=200_000, stagnation_iters=
+            # 500_000, this made grace permanently non-expiring for any
+            # R >= 2 (confirmed on a real 16-replica production run:
+            # n_snaps froze immediately after the first reheat while
+            # anchor_gap grew past 4000 -- anchoring was completely inert
+            # for the entire 6.7-hour run). Decrementing by `iters_done`
+            # (the same aggregate unit `anchor_grace_iters` is re-armed and
+            # compared in) fixes this regardless of replica count.
             for i in range(cfg.replicas):
                 s_i = int(st["scores_arr"][i])
                 e_i = float(st["energies"][i])
@@ -720,7 +756,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
                     st["pbest_energies"][i] = e_i
                     st["anchor_grace"][i] = 0
                 elif st["anchor_grace"][i] > 0:
-                    st["anchor_grace"][i] -= iters_per_replica
+                    st["anchor_grace"][i] -= iters_done
                 elif s_i < pb_s - cfg.anchor_margin:
                     _restore_replica(st, cfg, i, st["pbest_grids"][i], cfg.anchor_kick)
                     st["n_anchor_snaps"] += 1
@@ -807,7 +843,7 @@ def drive(cfg: SAConfig, runtime, base_dir: Path) -> None:
                   f"best={st['best_score']:>5d}  cur_best={cur_best_score:>5d}  "
                   f"rep_score=[{rep_score_min},{rep_score_med:.0f},{rep_score_max}]  "
                   f"n_moved={n_moved:>3d}  "
-                  f"anchor_gap={anchor_gap:.0f}  "
+                  f"anchor_gap={anchor_gap:.0f}  n_snaps={st['n_anchor_snaps']:>4d}  "
                   f"mean_E={mean_e:>10.2f}  accept_recent={accept_recent:>5.1%}  accept_life={accept_life:>5.1%}  "
                   f"T=[{np.min(st['temps']):.4g},{np.max(st['temps']):.4g}]  "
                   f"{measured_iters_per_sec:>10.0f} it/s")
