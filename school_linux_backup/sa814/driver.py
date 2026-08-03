@@ -80,8 +80,18 @@ def _rescore(cfg: SAConfig, grid: np.ndarray, scratch: dict):
 
 def _fresh_state(cfg: SAConfig, run_dir: Path, data_dir: Path, rng: np.random.Generator):
     R = cfg.replicas
-    grids = seeding.build_initial_replicas(R, data_dir, cfg.seed_file, run_dir, rng,
-                                            use_corpus=cfg.seed_from_corpus)
+    if cfg.seed_grids_file:
+        n_parsed = len(seeding.parse_grids_from_file(Path(cfg.seed_grids_file)))
+        grids = seeding.build_replicas_from_file(R, cfg.seed_grids_file, rng)
+        scores = [seeding.score_grid(g) for g in grids]
+        _log(f"[sa814] --seed-grids: {cfg.seed_grids_file} -> parsed {n_parsed} grids, "
+              f"scores [{min(scores)}..{max(scores)}], seeding {R} replicas "
+              f"({max(0, R - n_parsed)} perturbed)")
+        if cfg.seed_from_corpus or cfg.seed_file:
+            _log("[sa814] --seed-grids overrides --seed-file / corpus seeding; both ignored")
+    else:
+        grids = seeding.build_initial_replicas(R, data_dir, cfg.seed_file, run_dir, rng,
+                                                use_corpus=cfg.seed_from_corpus)
     dmasks = np.zeros((R, 10, core.ROWS), dtype=np.int64)
     for i in range(R):
         core.build_dmask(grids[i], dmasks[i])

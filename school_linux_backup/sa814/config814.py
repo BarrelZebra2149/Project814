@@ -56,6 +56,16 @@ class SAConfig:
     seed_file: Optional[str] = None   # extra corpus file (8x14 blocks) to seed from
     seed_from_corpus: bool = True     # if False, ignore data/*.txt + prior run outputs and
                                        # start every replica from a fresh random grid
+    seed_grids_file: Optional[str] = None
+    # Exclusive seeding: if set, every replica is seeded from the 8x14 blocks in
+    # THIS file and nothing else -- overrides both seed_from_corpus and
+    # seed_file. data/*.txt and this run's own best.txt/records.txt are never
+    # read. Grids are used in FILE ORDER (not re-sorted by score), so the
+    # caller has exact control over which grid lands on which replica. This
+    # exists because --seed-file alone doesn't work for "start from exactly
+    # this grid": without --no-seed it gets merged into and usually outranked
+    # by the data/*.txt corpus (up to 7666 points); with --no-seed it's never
+    # even read (seeding.build_initial_replicas short-circuits to all-random).
     rng_seed: Optional[int] = None    # seeds driver.py's np.random.default_rng(); None means
                                        # every run is nondeterministic (numpy draws OS entropy),
                                        # which makes two runs' outcomes incomparable. Set this to
@@ -430,6 +440,11 @@ def build_arg_parser(default_preset: str) -> argparse.ArgumentParser:
     p.add_argument("--no-seed", action="store_true",
                     help="Ignore data/*.txt and any prior run outputs; start every "
                          "replica from a fresh random grid instead of the existing corpus.")
+    p.add_argument("--seed-grids", type=str, default=None, dest="seed_grids_file",
+                    help="Seed EVERY replica from the 8x14 blocks in this file only. "
+                         "Ignores the data/*.txt corpus and any prior run output "
+                         "entirely (unlike --seed-file, which is merged into the "
+                         "corpus and usually outranked by it).")
     p.add_argument("--rng-seed", type=int, default=None,
                     help="Seed driver.py's RNG for reproducible runs. Without this, two "
                          "runs with identical flags still diverge (numpy draws OS entropy), "
