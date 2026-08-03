@@ -108,3 +108,43 @@ def build_initial_replicas(replicas: int, data_dir: Path, extra_seed_file: str |
         out[i] = rng.integers(0, 10, size=(core.ROWS, core.COLS)).astype(np.uint8)
 
     return out
+
+
+def build_replicas_from_file(replicas: int, seed_grids_file: str, rng: np.random.Generator,
+                              max_perturb_cells: int = 6) -> np.ndarray:
+    """Exclusive seeding: every replica comes from THIS file only, in file
+    order, with no corpus mixing and no score-based re-ranking -- the caller
+    controls exactly which grid lands on which replica. Extra replicas beyond
+    the file's grid count get progressively more perturbed copies (Hamming
+    distance 1, 2, 3, ... from their base grid) instead of duplicates, so a
+    single-grid file still gives the population a diversity gradient.
+
+    Raises ValueError on an empty/unparseable file rather than silently
+    falling back to random or corpus grids -- a silent fallback here would
+    make the caller (the seed tournament) look like it's seeding a specific
+    grid when it's actually just running blind, which is worse than a loud
+    failure.
+    """
+    grids = parse_grids_from_file(Path(seed_grids_file))
+    if not grids:
+        raise ValueError(f"--seed-grids {seed_grids_file}: no 8x14 digit blocks found")
+
+    out = np.empty((replicas, core.ROWS, core.COLS), dtype=np.uint8)
+    n_from_file = min(len(grids), replicas)
+    for i in range(n_from_file):
+        out[i] = grids[i]
+
+    for i in range(n_from_file, replicas):
+        base = grids[i % len(grids)].copy()
+        k = min(1 + i // len(grids), max_perturb_cells)
+        flat = base.reshape(-1)
+        idx = rng.choice(core.ROWS * core.COLS, size=k, replace=False)
+        for j in idx:
+            old = int(flat[j])
+            new = int(rng.integers(0, 9))
+            if new >= old:
+                new += 1   # guarantees a genuine change, same trick as core.apply_kick
+            flat[j] = new
+        out[i] = base
+
+    return out
