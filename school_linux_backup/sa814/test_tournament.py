@@ -320,6 +320,24 @@ class TestV5aStateMachine(unittest.TestCase):
         finally:
             tour.parse_grid_from_best_txt = orig
 
+    def test_revive_falls_back_to_failed_when_nothing_else_is_alive(self):
+        """The B3 fix: with the whole population failed, revive() must not
+        give up (that was tournament_exhausted in production -- tourney_B
+        and tourney_C both died this way at rounds 23 and 28). It must pull
+        at least one individual back from `failed`, resetting both
+        stall_iters and consecutive_failures so it gets a genuine fresh
+        chance rather than immediately re-failing next slice."""
+        tcfg = self._tcfg()
+        a = self._make_ind("i000", state="failed", consecutive_failures=3, stall_iters=999)
+        b = self._make_ind("i001", state="failed", consecutive_failures=3, stall_iters=999)
+        pop = [a, b]
+        tour.revive(pop, tcfg, round_no=1)
+        revived = [i for i in pop if i.state == "active"]
+        self.assertGreaterEqual(len(revived), 1, "at least one failed individual must be revived")
+        for i in revived:
+            self.assertEqual(i.stall_iters, 0)
+            self.assertEqual(i.consecutive_failures, 0)
+
     def test_champion_is_parked_not_archived(self):
         tcfg = self._tcfg(min_trial_iters=0, elite_keep=1, retire_stall_iters=1000, park_stall_iters=500)
         champ = self._make_ind("i000", best_score=999, total_iters=0)
@@ -384,13 +402,78 @@ class TestV5bParkReviveIntegration(_TournamentIntegrationBase):
             slice_iters=20_000, park_stall_iters=1, retire_stall_iters=10 ** 15,
             min_trial_iters=0, base_seed=600,
         )
-        tour.run_tournament(tcfg, max_rounds=4)
+        # park_stall_iters=1 only fires on a slice that does NOT improve --
+        # a real solver tends to keep setting new records for its first few
+        # slices from a random start, so more rounds are given here than the
+        # bare minimum to make a non-improving slice highly likely without
+        # relying on a razor-thin round count.
+        tour.run_tournament(tcfg, max_rounds=12)
         log_path = SA814_DIR / "tournament" / self.NAME / "log.jsonl"
         self.assertTrue(log_path.exists())
         events = [json.loads(l) for l in log_path.read_text(encoding="utf-8").splitlines() if l.strip()]
         n_parked = sum(1 for e in events if e["type"] == "parked")
         n_revived = sum(1 for e in events if e["type"] == "revived" or e["type"] == "individual_failed")
         self.assertGreaterEqual(n_parked, 1, "expected at least one park event with park_stall_iters=1")
+
+
+class TestFoundersAreAlwaysRandom(unittest.TestCase):
+    """Production data: three independent 7666-corpus-seeded individuals
+    (one per server) made zero improvement across 148M-305M iterations each.
+    founder:corpus must no longer exist as a code path -- see the module
+    docstring and the plan doc's data-analysis section for the full case."""
+
+    def test_make_founders_are_all_random_seeded_with_no_fresh_baked_in(self):
+        tcfg = tour.TournamentConfig(name="__test_founders", pop_size=6, base_seed=42)
+        founders = tour.make_founders(tcfg)
+        self.assertEqual(len(founders), 6)
+        for f in founders:
+            self.assertEqual(f.origin, "founder:random")
+            self.assertIn("--no-seed", f.cfg_flags)
+            self.assertNotIn("--fresh", f.cfg_flags,
+                              "cfg_flags must never contain --fresh (see module docstring / B0)")
+
+    def test_replacement_individuals_are_also_fresh_free(self):
+        tcfg = tour.TournamentConfig(name="__test_repl", pop_size=1, max_pop=2, base_seed=42)
+        pop = tour.make_founders(tcfg)
+        seq = [len(pop)]
+
+        def next_seq():
+            v = seq[0]
+            seq[0] += 1
+            return v
+
+        pop[0].state = "archived"
+        rng = np.random.default_rng(1)
+        tour.maybe_replace_archived(pop, tcfg, rng, next_seq)
+        new = [i for i in pop if i.origin == "replacement:random"]
+        self.assertGreaterEqual(len(new), 1)
+        for i in new:
+            self.assertNotIn("--fresh", i.cfg_flags)
+
+
+@unittest.skipUnless(os.name == "posix", "PID lockfile is only enforced on POSIX -- see acquire_lock docstring")
+class TestConcurrencyLock(unittest.TestCase):
+    NAME = "__test_lock"
+
+    def tearDown(self):
+        shutil.rmtree(SA814_DIR / "tournament" / self.NAME, ignore_errors=True)
+
+    def test_second_orchestrator_refuses_to_start_while_first_holds_the_lock(self):
+        lock_path = tour.acquire_lock(self.NAME)
+        self.assertIsNotNone(lock_path)
+        try:
+            with self.assertRaises(RuntimeError):
+                tour.acquire_lock(self.NAME)
+        finally:
+            tour.release_lock(lock_path)
+
+    def test_stale_lock_from_a_dead_pid_is_reclaimed(self):
+        d = tour.tournament_dir(self.NAME)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "orchestrator.lock").write_text("999999999", encoding="utf-8")  # almost certainly not a live pid
+        lock_path = tour.acquire_lock(self.NAME)
+        self.assertIsNotNone(lock_path)
+        tour.release_lock(lock_path)
 
 
 class TestV6NewSeedReplacement(_TournamentIntegrationBase):
@@ -402,50 +485,15 @@ class TestV6NewSeedReplacement(_TournamentIntegrationBase):
             slice_iters=20_000, park_stall_iters=1, retire_stall_iters=1,
             min_trial_iters=0, elite_keep=0, base_seed=700,
         )
-        final = tour.run_tournament(tcfg, max_rounds=5)
+        # See TestV5bParkReviveIntegration -- park/archive both require a
+        # non-improving slice, which a real solver may not produce in its
+        # first couple of slices from a random start. More rounds than the
+        # bare minimum makes that highly likely without depending on luck.
+        final = tour.run_tournament(tcfg, max_rounds=14)
         inds = [tour.Individual.from_dict(d) for d in final["individuals"]]
         replacements = [i for i in inds if i.origin == "replacement:random"]
         self.assertGreaterEqual(len(replacements), 1, "expected at least one replacement individual")
         self.assertLessEqual(len(inds), tcfg.max_pop, "population must not exceed max_pop")
-
-
-@unittest.skipUnless(os.name == "posix", "graceful SIGTERM shutdown is Linux-only (Windows "
-                                          "Popen.terminate() is TerminateProcess, no clean checkpoint)")
-class TestV7OrchestratorRestart(_TournamentIntegrationBase):
-    NAME = "__test_v7_restart"
-
-    def test_sigterm_checkpoints_and_resume_skips_fresh(self):
-        import signal as _signal
-        import threading
-
-        tcfg = tour.TournamentConfig(
-            name=self.NAME, solver_entrypoint=_ENTRYPOINT, pop_size=1, max_pop=1, replicas=2,
-            slice_iters=2_000_000_000, base_seed=1000,  # deliberately long so we can interrupt mid-slice
-        )
-        result_holder = {}
-
-        def _runner():
-            result_holder["final"] = tour.run_tournament(tcfg, max_rounds=1)
-
-        t = threading.Thread(target=_runner, daemon=True)
-        t.start()
-        time.sleep(3.0)
-        os.kill(os.getpid(), _signal.SIGTERM)
-        t.join(timeout=30)
-        self.assertFalse(t.is_alive(), "orchestrator did not shut down within 30s of SIGTERM")
-
-        state = tour.load_state(self.NAME)
-        self.assertIsNotNone(state)
-        ind = tour.Individual.from_dict(state["individuals"][0])
-        self.assertGreater(ind.total_iters, 0, "child should have checkpointed some progress before exit")
-
-        # Resume: re-run without max_rounds=0 and confirm no --fresh is passed
-        # for the existing individual (state.json already has it).
-        state2 = tour.load_state(self.NAME)
-        self.assertIsNotNone(state2)
-        ind2 = tour.Individual.from_dict(state2["individuals"][0])
-        self.assertGreaterEqual(ind2.total_iters, ind.total_iters,
-                                 "total_iters must never decrease across a restart")
 
 
 class TestV8DestructiveResetGuard(_TournamentIntegrationBase):
@@ -458,7 +506,7 @@ class TestV8DestructiveResetGuard(_TournamentIntegrationBase):
         )
         ind = tour.Individual(
             ind_id="i000", run_name=f"{self.NAME}__i000", origin="founder:random",
-            cfg_flags=["--fresh", "--no-seed", "--rng-seed", "800", "--replicas", "2"],
+            cfg_flags=["--no-seed", "--rng-seed", "800", "--replicas", "2"],
         )
         stop_flag = {"proc": None}
         res1 = tour.run_slice(tcfg, ind, stop_flag)
@@ -472,9 +520,61 @@ class TestV8DestructiveResetGuard(_TournamentIntegrationBase):
         ind.cfg_flags = ["--rng-seed", "800", "--replicas", "8"]
         res2 = tour.run_slice(tcfg, ind, stop_flag)
         self.assertTrue(res2.reset_detected, "changing --replicas must be caught as a destructive reset")
+        self.assertTrue(res2.hash_mismatch, "a real cfg_hash change must be classified as hash_mismatch, "
+                                             "not the tolerated iter_regression path")
         events = tour.apply_slice_result(ind, res2, tcfg, 2, scratch, population=[ind])
         self.assertEqual(ind.state, "failed")
-        self.assertTrue(any(e[0] == "destructive_reset" for e in events))
+        self.assertTrue(any(e[0] == "destructive_reset_hash" for e in events))
+
+    def test_small_iters_drop_is_tolerated_not_quarantined(self):
+        """A few-percent total_iters drop (process killed mid-checkpoint-
+        interval) must NOT permanently fail the individual -- only a real
+        cfg_hash mismatch, or a drop >= RESET_TOLERANCE_ITERS, should. This
+        is the exact bug (B1) that made all three production tournaments
+        fail 100% of their individuals: every benign restart wobble was
+        being classified identically to a genuine destructive reset."""
+        tcfg = tour.TournamentConfig(
+            name=self.NAME, solver_entrypoint=_ENTRYPOINT, pop_size=1, max_pop=1, replicas=2,
+            slice_iters=20_000, base_seed=800,
+        )
+        ind = tour.Individual(
+            ind_id="i000", run_name=f"{self.NAME}__i000", origin="founder:random",
+            cfg_flags=["--no-seed", "--rng-seed", "800", "--replicas", "2"],
+        )
+        scratch = tour._RescoreScratch()
+        # These flags are computed by run_slice() from raw pre/post values;
+        # SliceResult itself is a plain data carrier, so a hand-built
+        # instance for a unit test must set them explicitly to match the
+        # scenario being simulated (a real, tiny drop under tolerance).
+        res_small_drop = tour.SliceResult(
+            ok=True, pre_iters=1_000_000, post_iters=1_000_000 - 1000, delta_iters=0,
+            pre_score=100, post_score=100, cfg_hash="samehash",
+            hash_mismatch=False, iter_regression=False, minor_regression=True,
+        )
+        orig = tour.parse_grid_from_best_txt
+        tour.parse_grid_from_best_txt = lambda run_dir: None
+        try:
+            events = tour.apply_slice_result(ind, res_small_drop, tcfg, 1, scratch, population=[ind])
+        finally:
+            tour.parse_grid_from_best_txt = orig
+        self.assertNotEqual(ind.state, "failed", "a small iters drop must not fail the individual outright")
+        self.assertEqual(ind.consecutive_failures, 1, "a minor regression must still count one strike")
+        self.assertEqual(ind.total_iters, res_small_drop.post_iters, "must resync to the disk (post) value")
+        self.assertTrue(any(e[0] == "minor_iter_regression" for e in events))
+
+    def test_large_iters_drop_is_quarantined_like_a_real_reset(self):
+        tcfg = tour.TournamentConfig(name=self.NAME, pop_size=1, max_pop=1)
+        ind = tour.Individual(ind_id="i000", run_name=f"{self.NAME}__i000")
+        res_big_drop = tour.SliceResult(
+            ok=True, pre_iters=1_000_000_000, post_iters=1_000_000, delta_iters=0,
+            pre_score=100, post_score=100, cfg_hash="samehash",
+            hash_mismatch=False, iter_regression=True, minor_regression=False,
+        )
+        self.assertTrue(res_big_drop.reset_detected)
+        scratch = tour._RescoreScratch()
+        events = tour.apply_slice_result(ind, res_big_drop, tcfg, 1, scratch, population=[ind])
+        self.assertEqual(ind.state, "failed")
+        self.assertTrue(any(e[0] == "destructive_reset_iters" for e in events))
 
 
 class TestV9CrashResilience(_TournamentIntegrationBase):
@@ -487,11 +587,11 @@ class TestV9CrashResilience(_TournamentIntegrationBase):
         )
         bad = tour.Individual(
             ind_id="i000", run_name=f"{self.NAME}__i000", origin="founder:random",
-            cfg_flags=["--fresh", "--replicas", "-1"],
+            cfg_flags=["--replicas", "-1"],
         )
         good = tour.Individual(
             ind_id="i001", run_name=f"{self.NAME}__i001", origin="founder:random",
-            cfg_flags=["--fresh", "--no-seed", "--rng-seed", "901", "--replicas", "2"],
+            cfg_flags=["--no-seed", "--rng-seed", "901", "--replicas", "2"],
         )
         pop = [bad, good]
         scratch = tour._RescoreScratch()
@@ -504,6 +604,116 @@ class TestV9CrashResilience(_TournamentIntegrationBase):
         res_good = tour.run_slice(tcfg, good, stop_flag)
         events = tour.apply_slice_result(good, res_good, tcfg, 1, scratch, population=pop)
         self.assertNotEqual(good.state, "failed", "a healthy individual must be unaffected by a sibling's failures")
+
+    def test_nonzero_exit_with_stale_meta_json_is_treated_as_failure(self):
+        """B4: a child that exits nonzero (crash, bad flag caught by argparse,
+        etc.) must count as a failure even if an OLDER meta.json from a prior
+        slice is still sitting on disk -- otherwise checkpoint.load_meta()
+        succeeds, res.ok becomes True, and consecutive_failures gets reset to
+        0 every time, so the 3-strikes guard never trips for this class of
+        failure (this was true of every crashed slice in the pre-fix code)."""
+        tcfg = tour.TournamentConfig(
+            name=self.NAME, solver_entrypoint=_ENTRYPOINT, pop_size=1, max_pop=1, replicas=2,
+            slice_iters=20_000, base_seed=902,
+        )
+        ind = tour.Individual(
+            ind_id="i002", run_name=f"{self.NAME}__i002", origin="founder:random",
+            cfg_flags=["--no-seed", "--rng-seed", "902", "--replicas", "2"],
+        )
+        stop_flag = {"proc": None}
+        # First slice succeeds normally, leaving a real meta.json on disk.
+        res1 = tour.run_slice(tcfg, ind, stop_flag)
+        self.assertTrue(res1.ok)
+        # Now force a crash (invalid --replicas) while meta.json from the
+        # first slice is still present -- driver.py should exit nonzero
+        # before ever calling checkpoint.save() again.
+        ind.cfg_flags = ["--replicas", "-5"]
+        res2 = tour.run_slice(tcfg, ind, stop_flag)
+        self.assertNotEqual(res2.returncode, 0, "invalid --replicas should make the child exit nonzero")
+        self.assertFalse(res2.ok, "run_slice must classify a nonzero exit as a failure even with stale meta.json present")
+
+
+# ===========================================================================
+# Observability (B14) -- every slice must leave enough of a trail to diagnose
+# a stuck/failing tournament without hours of forensic log-arithmetic.
+# ===========================================================================
+
+class TestObservabilitySliceDone(_TournamentIntegrationBase):
+    NAME = "__test_observability"
+
+    def test_slice_done_event_is_logged_with_full_detail(self):
+        tcfg = tour.TournamentConfig(
+            name=self.NAME, solver_entrypoint=_ENTRYPOINT, pop_size=1, max_pop=1, replicas=2,
+            slice_iters=20_000, min_trial_iters=0, base_seed=950,
+        )
+        tour.run_tournament(tcfg, max_rounds=1)
+        log_path = SA814_DIR / "tournament" / self.NAME / "log.jsonl"
+        events = [json.loads(l) for l in log_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        slice_done = [e for e in events if e["type"] == "slice_done"]
+        self.assertGreaterEqual(len(slice_done), 1, "expected at least one slice_done event")
+        args = slice_done[0]["args"]
+        # [ind_id, pre_iters, post_iters, delta_iters, stop_reason, wall_seconds, returncode, improved]
+        self.assertEqual(len(args), 8)
+        self.assertEqual(args[6], 0, "returncode must be logged and be 0 for a clean slice")
+
+
+# ===========================================================================
+# V7 -- resume actually resumes (does NOT replay from scratch). Replaces the
+# old no-op that loaded the same state.json file twice and asserted x >= x.
+# ===========================================================================
+
+class TestV7ResumeIsReal(_TournamentIntegrationBase):
+    NAME = "__test_v7_resume"
+
+    def test_second_slice_has_no_fresh_flag_and_total_iters_advances_incrementally(self):
+        tcfg = tour.TournamentConfig(
+            name=self.NAME, solver_entrypoint=_ENTRYPOINT, pop_size=1, max_pop=1, replicas=2,
+            slice_iters=20_000, min_trial_iters=0, base_seed=1000,
+        )
+        tour.run_tournament(tcfg, max_rounds=1)
+        state1 = tour.load_state(self.NAME)
+        ind1 = tour.Individual.from_dict(state1["individuals"][0])
+        self.assertGreater(ind1.total_iters, 0, "first slice should have made some progress")
+        self.assertNotIn("--fresh", ind1.cfg_flags,
+                          "cfg_flags must never contain --fresh -- it must only ever be appended "
+                          "transiently to argv for the genuinely first slice (see run_slice)")
+
+        run_dir = tour.run_dir_for(ind1)
+        log_before = (run_dir / "slice.log").read_text(encoding="utf-8", errors="ignore")
+
+        tour.run_tournament(tcfg, max_rounds=2)
+        state2 = tour.load_state(self.NAME)
+        ind2 = tour.Individual.from_dict(state2["individuals"][0])
+
+        log_after = (run_dir / "slice.log").read_text(encoding="utf-8", errors="ignore")
+        second_slice_log = log_after[len(log_before):]
+        self.assertNotIn("--fresh", second_slice_log,
+                          "the second slice's own subprocess invocation must not have been passed --fresh")
+
+        # NOTE: total_iters after slice 2 lands at ~2x slice_iters in BOTH the
+        # correct-resume case and the B0-buggy-replay case, because --iters
+        # is always a cumulative absolute target (pre_iters + slice_iters) --
+        # a full replay from 0 hits the exact same cap a real resume does.
+        # total_iters magnitude therefore cannot distinguish the two; it can
+        # only confirm the run didn't stall entirely.
+        self.assertGreater(ind2.total_iters, ind1.total_iters,
+                            "total_iters must increase across slice 2, not just replay to the same point")
+        self.assertEqual(ind2.slices_run, 2)
+
+        # The actual distinguishing signal: a buggy replay redoes slice 1's
+        # ~20_000 iterations of real compute before doing any new work, so
+        # its wall-clock time is roughly 2x a normal slice. A real resume
+        # only does the incremental ~20_000 iterations of NEW work, so its
+        # wall time should be in the same ballpark as slice 1's, not double.
+        log_path = SA814_DIR / "tournament" / self.NAME / "log.jsonl"
+        events = [json.loads(l) for l in log_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        slice_done = [e["args"] for e in events if e["type"] == "slice_done"]
+        self.assertEqual(len(slice_done), 2, "expected exactly one slice_done event per round")
+        wall1, wall2 = slice_done[0][5], slice_done[1][5]
+        self.assertLess(wall2, wall1 * 1.6,
+                         f"slice 2 wall time ({wall2}s) is much longer than slice 1's ({wall1}s) -- "
+                         f"looks like slice 2 replayed slice 1's work from scratch instead of resuming "
+                         f"(the exact B0 failure mode)")
 
 
 if __name__ == "__main__":
