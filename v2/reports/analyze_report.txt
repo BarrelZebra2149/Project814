@@ -1,0 +1,22 @@
+records=37750  runs=151  max K=3442
+  zero-start: n=19250 median K=2578 99%=3378 max=3378
+  random-start: n=18500 median K=2583 99%=3442 max=3442
+
+[A] symmetry invariance (PLAN 2.3): score of 4 variants must be identical
+  tested 500 grids -> 0 with differing scores
+  control: random digit relabeling changed the score in 200/200 grids (expected: most)
+
+[B] bottleneck: which number is K+1 (the first one that fails)?
+  digit-length of K+1 (upper half of records): {4: 18970}
+  most common failing numbers: [(2670, 718), (2677, 494), (2644, 490), (2703, 490), (2840, 488), (2774, 485), (2698, 485), (3003, 455)]
+  first digit of K+1: {2: 13657, 3: 5313}
+  last digit of K+1:  {0: 3653, 2: 251, 3: 2764, 4: 2944, 5: 1713, 6: 1236, 7: 1499, 8: 3414, 9: 1496}
+  why K+1 fails (pair=missing adjacency, digit=missing digit, path=pairs ok but no walk): {'path': 800}
+
+[C] can features predict K?  (group split by trajectory => no leakage)
+  all records:            Spearman=0.613  (n_test=7500)
+  only K >=  2583:        Spearman=0.240  (n=4195)
+  only K >=  2839:        Spearman=-0.176  (n=2451)
+  only K >=  3299:        Spearman=0.919  (n=491)
+  within-trajectory Spearman (mean over 30 test runs): 0.209
+  top |corr| features: [('pair47', -0.549), ('pair29', 0.495), ('freq1', -0.427), ('pair23', 0.414), ('pair14', -0.357), ('freq9', 0.338), ('pair45', -0.332), ('pair01', -0.332)]
