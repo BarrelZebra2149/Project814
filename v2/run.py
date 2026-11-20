@@ -205,7 +205,10 @@ def main():
     ap.add_argument("--reheat1", type=float, default=1.5)
     ap.add_argument("--t2-0", type=float, default=0.5)
     ap.add_argument("--t2-1", type=float, default=0.2)
-    ap.add_argument("--tmax2", type=int, default=20000)
+    ap.add_argument("--tmax2", type=int, default=20000, help="initial upper limit of stage 2 (auto-raised, see below)")
+    ap.add_argument("--tmax-step", type=int, default=10000, help="raise tmax2 by this much ...")
+    ap.add_argument("--tmax-margin", type=int, default=1000, help="... whenever a stage-2 island's best K >= tmax2 - margin")
+    ap.add_argument("--tmax-cap", type=int, default=99999, help="walk tables only cover up to 5 digits")
     ap.add_argument("--advance-holes", type=int, default=2)
     ap.add_argument("--stag-limit", type=int, default=4)
     ap.add_argument("--max-rounds", type=int, default=0, help="0 = run forever")
@@ -220,7 +223,8 @@ def main():
 
     st = None if a.fresh else load_state(spath)
     if st:
-        print(f"resuming: round {st['round']}, elapsed {st['elapsed']/3600:.2f}h, {len(st['islands'])} islands", flush=True)
+        cfg["tmax2"] = int(st.get("tmax2", cfg["tmax2"]))          # state wins: an auto-raised limit must not fall back to the CLI default
+        print(f"resuming: round {st['round']}, elapsed {st['elapsed']/3600:.2f}h, {len(st['islands'])} islands, tmax2={cfg['tmax2']}", flush=True)
     else:
         islands, k = [], 0
         for _ in range(a.zero):
@@ -229,7 +233,7 @@ def main():
             islands.append(new_island(f"r{k}", "random", a.base_seed + k, cfg)); k += 1
         for f in a.seed_file:
             islands.append(new_island(f"s{k}", "seed", a.base_seed + k, cfg, seed_file=f)); k += 1
-        st = dict(version=1, round=0, elapsed=0.0, next_seed=a.base_seed + k, islands=islands, restarts=0,
+        st = dict(version=1, round=0, elapsed=0.0, next_seed=a.base_seed + k, islands=islands, restarts=0, tmax2=cfg["tmax2"],
                   global_best=dict(K=0, grid=[0] * NC, island=""), seen_codes=[])
         log_event(out, ("start", [(i["id"], i["kind"], i["stage"], i["best_K"]) for i in islands]))
     stop = {"flag": False}
@@ -300,13 +304,22 @@ def main():
                     st["restarts"] += 1
                     st["islands"][idx] = new
                     log_event(out, ("restart", isl["id"], isl["best_K"], new["rng_seed"]))
+            # auto-raise the stage-2 limit: a stage-2 island close to tmax2 would otherwise be capped (its K is min(first hole - 1, tmax2))
+            top2 = max((i["best_K"] for i in st["islands"] if i["stage"] == 2), default=0)
+            while top2 >= cfg["tmax2"] - a.tmax_margin and cfg["tmax2"] < a.tmax_cap:
+                old = cfg["tmax2"]
+                cfg["tmax2"] = min(old + a.tmax_step, a.tmax_cap)
+                st["tmax2"] = cfg["tmax2"]
+                log_event(out, ("tmax_raise", old, cfg["tmax2"], top2))
+            if top2 >= a.tmax_cap - a.tmax_margin:
+                log_event(out, ("tmax_at_cap", cfg["tmax2"], top2))
             st["seen_codes"] = sorted(seen)
             atomic_write(spath, json.dumps(st))
             # status line + json
             isl_txt = " ".join(f"{i['id']}:{i['best_K']}{'*' if i['stage'] == 2 else ''}" for i in st["islands"])
             evals = sum(i["evals"] for i in st["islands"])
             line = (f"[814] best={st['global_best']['K']} ({st['global_best']['island']}) | round {st['round']} | "
-                    f"{st['elapsed']/3600:.2f}h | evals {evals/1e9:.2f}e9 | restarts {st['restarts']} | {isl_txt}   (*=stage2)")
+                    f"{st['elapsed']/3600:.2f}h | tmax2 {cfg['tmax2']} | evals {evals/1e9:.2f}e9 | restarts {st['restarts']} | {isl_txt}   (*=stage2)")
             print(line, flush=True)
             atomic_write(sdir / "status.json", json.dumps(dict(line=line, global_best=st["global_best"]["K"],
                          islands=[{k: i[k] for k in ("id", "kind", "stage", "best_K", "cur_K", "stag", "cycle_no", "evals", "restarts")}
